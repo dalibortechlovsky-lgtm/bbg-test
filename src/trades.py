@@ -34,6 +34,12 @@ class Trade:
     account: Optional[str] = None
     external_id: Optional[str] = None
 
+    instrument_name: Optional[str] = None
+    order_entered_at: Optional[datetime] = None
+    record_kind: str = "execution"
+    quantity_type: Optional[str] = None
+    trading_place: Optional[str] = None
+
     def fingerprint(self) -> str:
         # Stable economic identity; later enriched with account/currency when available.
         raw = f"{self.side}|{self.security}|{self.quantity}|{self.price}"

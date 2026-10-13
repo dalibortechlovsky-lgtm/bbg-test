@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+data/
+.env
+*.sqlite3
+backups/
+bbg-bridge-config*.json

@@ -1,0 +1,22 @@
+{$DOMAIN} {
+    handle /health {
+        reverse_proxy app:8000
+    }
+    handle /api/bridge/quotes {
+        reverse_proxy app:8000
+    }
+    handle /api/bridge/watchlist {
+        reverse_proxy app:8000
+    }
+    handle {
+        basic_auth {
+            {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+        }
+        reverse_proxy app:8000
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+    }
+}

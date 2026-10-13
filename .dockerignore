@@ -1,0 +1,8 @@
+*
+!src/
+!src/*.py
+!web/
+!web/index.html
+!Dockerfile
+!bridge/
+!bridge/*.py

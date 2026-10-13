@@ -29,9 +29,9 @@ class TradeLedger:
         self.trades: List[Trade] = []
 
     def add(self, trade: Trade) -> Trade:
-        if trade.external_id and any(t.external_id == trade.external_id for t in self.trades):
-            return next(t for t in self.trades if t.external_id == trade.external_id)
-        if trade.source == TradeSource.UBS_KEYTRADER:
+        if trade.external_id and any(t.external_id == trade.external_id and t.account == trade.account and t.source == trade.source for t in self.trades):
+            return next(t for t in self.trades if t.external_id == trade.external_id and t.account == trade.account and t.source == trade.source)
+        if trade.source == TradeSource.UBS_KEYTRADER and trade.record_kind == "execution":
             candidates = [(match_score(t, trade), t) for t in self.trades
                           if t.status == TradeStatus.PROVISIONAL]
             candidates = [(s,t) for s,t in candidates if s >= 0]
