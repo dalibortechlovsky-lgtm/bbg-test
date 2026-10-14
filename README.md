@@ -214,7 +214,7 @@ Hetzner root Console. Do not rebuild the VM or recreate its database.
 Offline and local HTTPS tests validate this integration; a live Windows-to-hosted
 upload has not yet occurred. Generic ISIN listing resolution and missing-ISIN options
 still need mapping before live portfolio valuation. Bloomberg chat, UBS execution,
-MARS booking, Greeks and ChatGPT tool integration are not active.
+MARS booking and ChatGPT tool integration are not active. The risk module below provides Greeks for supported instruments with explicitly verified inputs.
 
 ## Portfolio analytics
 
@@ -241,3 +241,102 @@ and instrument terms are supplied. Currency allocation is denomination, not delt
 
 Run `python -m unittest discover -s tests -v`. The source update installer checks
 analytics reconciliation and preserves the existing records/credentials.
+
+## Average-cost P/L, derivatives risk and trader report
+
+The dashboard now has a separate performance ledger (`src/performance.py`),
+verified-input risk store/model (`src/risk.py`), and trader report
+(`src/report.py`). No external Python dependencies are required. These are
+available through authenticated Caddy routes; bridge bearer tokens cannot read
+reports, holdings or event ledgers.
+
+### Performance events
+
+Download `/api/templates/performance.csv` through the dashboard. UTF-8,
+comma-separated columns in this exact order:
+
+```
+event_id,date,sequence,type,account,security,currency,quantity,price,multiplier,fees,amount,description
+```
+
+Dates are actual trade/valuation dates, YYYY-MM-DD; same-day inventory chronology
+is explicit with nonnegative unique `sequence`. `event_id` is globally unique.
+Rows are append-only and idempotent. Conflicts or ambiguous ordering reject the
+whole batch. Corrections/deletions are not yet supported; verify the source
+records before importing. A new security requires an explicit zero OPENING row;
+existing longs/shorts require an opening signed quantity and native average cost
+price including historical fees. OPENING fees are zero. One baseline is allowed
+per account/security/currency. Earlier historical fills need a correspondingly
+earlier baseline; do not import a later baseline as a reset.
+
+BUY/SELL quantity is positive, price is per quoted unit and multiplier must be
+verified (1 for ordinary shares, contract multiplier for options, 0.01 only for
+confirmed percent-of-nominal bond units). Fees are nonnegative in trade currency.
+The engine calculates signed average cost, including opening trade fees,
+proportional closing fees and allocation of fees when a trade crosses zero.
+Missing baselines or changing multipliers block that instrument's P/L; no
+inferred inventory or corporate actions. Results are native-currency accounting
+figures, not tax reports or historical FX-inclusive base-currency gains.
+
+INCOME records a net amount. CASHFLOW records an external transfer (deposit
+positive, withdrawal negative), not a trade/dividend/interest movement.
+VALUATION records complete closing account NAV including cash, in its stated
+currency. For these types, inventory fields and security are blank. Daily P/L
+is next closing NAV minus prior closing NAV minus external flows after the prior
+close through the next close. Non-consecutive dates are explicitly period P/L;
+account/currency scopes remain separate. No automatic completeness or brokerage
+reconciliation is possible from these manually supplied totals. YTD totals are
+imported realized and income only, not total YTD portfolio P/L or return.
+
+KeyTrader order summaries remain separate: execution dates, fees and actual
+fills cannot be inferred from order-entry timestamps. The TR PDF is a layout
+reference; its historical totals have not been imported as ledger evidence.
+
+### Derivatives risk
+
+Download `/api/templates/risk.csv`. Required columns:
+
+```
+position_id,kind,underlying,currency,multiplier,strike,expiry,spot,volatility,rate,dividend_yield,observed_at,verified
+```
+
+The dashboard lists holding IDs. `verified=yes` is a user assertion that terms
+and conventions have been checked. Supported kinds: european_call,
+european_put, future. Currency must equal holding currency; quantity is signed
+and comes from the dated UBS snapshot. Supply timezone-aware ISO expiry and
+observation timestamps. Options use decimal volatility/rates/dividend yield
+(e.g. volatility 0.25), ACT/365 and continuous yield. Futures spot is the futures
+quote, with linear risk; price times notional is deliberately not shown as
+asset MTM. Older observations cannot replace newer stored ones. Imports are
+atomic. Inputs older than 15 minutes retain dated individual modeled figures
+but are excluded from aggregates; expired instruments require settlement data.
+
+Black–Scholes Greeks: delta units/cash, signed gamma's quadratic P/L for a 1%
+spot move, vega per one volatility percentage point, theta per calendar day.
+Full repricing scenarios: spot ±5%/±10%, volatility +5 points. Currency aggregates
+assume simultaneous relative shocks across all modeled underlyings. No
+American/exotic/structured model, implied-vol solver, VaR, margin, assignment,
+cash-flow/corporate-action or bond-DV01 engine. PX_LAST bridge uploads do not
+refresh these separate risk inputs. Verified terms/market data are prerequisites.
+
+### Trader report exports
+
+`/reports/trader` is a printable view. `/api/reports/trader.html` downloads a
+standalone HTML report; `/api/reports/trader.csv` downloads UTF-8 BOM CSV.
+Report controls default size currency EUR and snapshot unrealized currency CZK,
+matching the reference's column convention; both can be changed. Conversions
+use direct/inverse/cross dated export FX, with missing rates shown unavailable.
+Report sections: equities, bonds, derivatives/ETFs/structured products, cash and
+deposits/FX; average-cost realized history; income; daily/period P/L; derivatives
+risk. Native realized currency totals are separate. Snapshot unrealized P/L is
+not relabeled YTD. No copied logos or historical totals. Negative/positive P/L
+shading follows the reference; exposure values are not treated as gains/losses.
+Use Print / Save as PDF (portrait A4, print backgrounds enabled). Text is HTML
+escaped and CSV formula-like strings are neutralized.
+
+Validation: `python -m unittest discover -s tests -v`; frontend Node syntax check;
+local Chromium render/download/print checks; `deploy/smoke_test.py` against a
+locally built `bbg-frontoffice:deployment-test` validates authenticated HTTPS
+report downloads, scoped device access, persistence and backup restoration.
+The updater validates new features and retains existing performance/risk row
+counts without inserting synthetic records into a live account.

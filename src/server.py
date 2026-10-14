@@ -4,10 +4,15 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
+import csv
+from io import StringIO
 from .storage import SnapshotStore, DEFAULT_DB
 from .quotes import QuoteStore
 from .analytics import portfolio_analytics
+from .performance import PerformanceStore, calculate_performance, HEADERS as PERFORMANCE_HEADERS
+from .risk import RiskStore, derivatives_risk, HEADERS as RISK_HEADERS
+from .report import report_data, report_html, report_csv
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,7 +22,7 @@ class Handler(BaseHTTPRequestHandler):
     public_origin = None
     quote_store = None
 
-    def reply(self, data, content_type='application/json', status=200):
+    def reply(self, data, content_type='application/json', status=200, filename=None):
         if not isinstance(data, bytes):
             data = json.dumps(data).encode()
         self.send_response(status)
@@ -25,10 +30,35 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(data)))
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
+        if filename:
+            self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
         self.end_headers()
         self.wfile.write(data)
 
     def do_GET(self):
+        path=urlsplit(self.path).path
+        if path in {'/api/templates/performance.csv','/api/templates/risk.csv'}:
+            out=StringIO(); writer=csv.writer(out)
+            writer.writerow(PERFORMANCE_HEADERS if 'performance' in path else RISK_HEADERS)
+            self.reply(out.getvalue().encode('utf-8-sig'),'text/csv; charset=utf-8',filename=path.rsplit('/',1)[1])
+            return
+        if path in {'/api/reports/trader.html','/api/reports/trader.csv','/reports/trader'}:
+            try:
+                snapshot=self.store.latest() if self.store else None
+                bloomberg=self.quote_store.view() if self.quote_store else {'quotes':[]}
+                perf=calculate_performance(PerformanceStore(self.store.path).events() if self.store else [])
+                risk=derivatives_risk(snapshot,RiskStore(self.store.path).terms() if self.store else [])
+                query=parse_qs(urlsplit(self.path).query)
+                data=report_data(snapshot,portfolio_analytics(snapshot,bloomberg),perf,risk,
+                    query.get('size_currency',['EUR'])[0],query.get('pnl_currency',['CZK'])[0])
+                if path.endswith('.csv'):
+                    self.reply(report_csv(data),'text/csv; charset=utf-8',filename='trader-report-'+data['date']+'.csv')
+                else:
+                    self.reply(report_html(data),'text/html; charset=utf-8',
+                        filename='trader-report-'+data['date']+'.html' if path.endswith('.html') else None)
+            except ValueError as exc:
+                self.reply({'error':str(exc)},status=400)
+            return
         if self.path == '/health':
             if self.store:
                 self.store.latest()
@@ -46,6 +76,9 @@ class Handler(BaseHTTPRequestHandler):
                 'bloomberg': bloomberg['status'],
                 'bloomberg_data': bloomberg,
                 'analytics': portfolio_analytics(snapshot, bloomberg),
+                'performance': calculate_performance(PerformanceStore(self.store.path).events() if self.store else []),
+                'risk': derivatives_risk(snapshot,RiskStore(self.store.path).terms() if self.store else []),
+                'risk_inputs_count': len(RiskStore(self.store.path).terms()) if self.store else 0,
                 'bridge_tokens': self.quote_store.devices() if self.quote_store else [],
                 'ubs': f"Snapshot as of {snapshot['as_of']} · Not live" if snapshot else 'No snapshot imported',
                 'execution_enabled': False,
@@ -71,7 +104,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith('/api/bridge/') and self.quote_store:
             self.bridge_post()
             return
-        formats = {'/api/import/positions': 'ubs-positions', '/api/import/orders': 'ubs-orders'}
+        formats = {'/api/import/positions': 'ubs-positions', '/api/import/orders': 'ubs-orders',
+                   '/api/import/performance':'desk-performance','/api/import/risk':'desk-risk'}
         if self.path not in formats or not self.store:
             self.send_error(404)
             return
@@ -91,12 +125,19 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply({'error': 'CSV must be between 1 byte and 2 MiB'}, status=413)
                 return
             content = self.rfile.read(length).decode('utf-8-sig')
-            result = (self.store.import_content(content) if self.path == '/api/import/positions'
-                      else self.store.import_orders_content(content))
+            if self.path=='/api/import/performance':
+                result=PerformanceStore(self.store.path).import_content(content)
+            elif self.path=='/api/import/risk':
+                result=RiskStore(self.store.path).import_content(content,self.store.latest())
+            else:
+                result = (self.store.import_content(content) if self.path == '/api/import/positions'
+                          else self.store.import_orders_content(content))
         except (UnicodeError, ValueError) as exc:
             self.reply({'error': str(exc)}, status=400)
             return
-        if self.path == '/api/import/orders':
+        if self.path in {'/api/import/performance','/api/import/risk'}:
+            self.reply(result)
+        elif self.path == '/api/import/orders':
             self.reply(result, status=200 if result['accepted'] else 409)
         else:
             self.reply({key: result[key] for key in ['count', 'as_of', 'already_imported']})

@@ -44,7 +44,9 @@ auth='Basic '+base64.b64encode((login['username']+':'+login['password']).encode(
 with urllib.request.urlopen(urllib.request.Request(login['url']+'/api/status',headers={'Authorization':auth}),timeout=15) as r:
     state=json.load(r)
 Path(sys.argv[1]).write_text(json.dumps({'positions':len(state['positions']),'trades':len(state['trades']),
-                                      'snapshot_id':(state.get('snapshot') or {}).get('id')}))
+                                      'snapshot_id':(state.get('snapshot') or {}).get('id'),
+                                      'performance_events':state.get('performance',{}).get('stored_event_count',0),
+                                      'risk_inputs':state.get('risk_inputs_count',0)}))
 PY
 container=$(docker compose --env-file .env ps -q app)
 docker compose --env-file .env exec -T app python -m src.backup /data/frontoffice.sqlite3 "/data/backups/update-$stamp.sqlite3"
@@ -82,6 +84,10 @@ for attempt in range(20):
         assert (state.get('snapshot') or {}).get('id')==before['snapshot_id']
         assert state['execution_enabled'] is False and 'bloomberg_data' in state
         assert 'analytics' in state
+        assert state['performance']['method']=='average_cost'
+        assert state['performance']['stored_event_count']==before['performance_events']
+        assert state['risk_inputs_count']==before['risk_inputs']
+        assert 'risk' in state
         if state.get('snapshot'):
             from decimal import Decimal
             analytics=state['analytics']
@@ -92,6 +98,11 @@ for attempt in range(20):
     except Exception:
         time.sleep(3)
 else: raise RuntimeError('Updated dashboard readiness or data-preservation check failed')
+# Verify report downloads without importing any synthetic trading data.
+if state.get('snapshot'):
+    for path,expected in [('/api/reports/trader.html',b'Trading Overview'),('/api/reports/trader.csv',b'section,date')]:
+        with urllib.request.urlopen(urllib.request.Request(base+path,headers={'Authorization':auth}),timeout=15) as r:
+            assert r.status==200 and expected in r.read()
 # Exercise device auth using an empty starting heartbeat; never inject test prices.
 device=request('/api/bridge/token',{'name':'Release verification (temporary)'})
 headers={'Authorization':'Bearer '+device['config']['token'],'Content-Type':'application/json'}

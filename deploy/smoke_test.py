@@ -50,6 +50,8 @@ try:
         sys.path.insert(0,str(ROOT))
         sys.path.insert(0,str(ROOT/'tests'))
         from test_keytrader import export
+        from test_positions import sample
+        from test_performance import event, csv_events
         client='''
 import base64,json,ssl,time
 from urllib.request import Request,build_opener,ProxyHandler,HTTPSHandler,HTTPRedirectHandler
@@ -116,9 +118,29 @@ try: cloud_request(config,'endpoint',payload)
 except HTTPError as e: assert e.code==401
 else: raise AssertionError('Revoked token accepted')
 print('Windows uploader HTTPS contract, replay timestamps, token scope and revocation verified')
+for route in ['/reports/trader','/api/reports/trader.csv','/api/templates/performance.csv']:
+ try: opener.open('https://dashboard.test'+route,timeout=5)
+ except HTTPError as e: assert e.code==401
+ else: raise AssertionError('Anonymous report or template access accepted')
+for kind,content in [('positions',__POSITIONS_CONTENT__),('performance',__PERFORMANCE_CONTENT__)]:
+ h={'Authorization':auth,'Content-Type':'text/csv','X-Import-Format':('ubs-' if kind=='positions' else 'desk-')+kind,'Origin':'https://dashboard.test'}
+ with opener.open(Request('https://dashboard.test/api/import/'+kind,data=content.encode(),headers=h),timeout=5) as r:
+  assert r.status==200
+with opener.open(Request(url,headers={'Authorization':auth}),timeout=5) as r:
+ state=json.load(r)
+assert state['performance']['method']=='average_cost'
+assert state['performance']['totals']['USD']['realized']=='98'
+for route in ['/reports/trader','/api/reports/trader.html','/api/reports/trader.csv']:
+ with opener.open(Request('https://dashboard.test'+route,headers={'Authorization':auth}),timeout=5) as r:
+  assert r.status==200 and len(r.read())>100
+print('Authenticated report downloads, anonymous rejection and average-cost performance verified')
+
 
 '''
         client=client.replace('__ORDER_CONTENT__',json.dumps(export()))
+        client=client.replace('__POSITIONS_CONTENT__',json.dumps(sample()))
+        client=client.replace('__PERFORMANCE_CONTENT__',json.dumps(csv_events([
+            event('opening','OPENING','10','100','0'),event('sale','SELL','5','120','2',sequence=1)])))
         print(run(['docker','exec','-i','-e','NO_PROXY=dashboard.test,app,localhost,127.0.0.1','-e','no_proxy=dashboard.test,app,localhost,127.0.0.1','-e','SSL_CERT_FILE=/tmp/root.crt',app,'python','-'],input=client))
         # Store synthetic order inside the non-root app container and check retention.
         import sys
@@ -129,10 +151,10 @@ print('Windows uploader HTTPS contract, replay timestamps, token scope and revoc
         persist="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); r=s.import_orders_content("+input_data+"); assert r['added']==1; print('Non-root database write verified')"
         print(run(['docker','exec',app,'python','-c',persist]))
         print(run(['docker','exec',app,'python','-m','src.backup','/data/frontoffice.sqlite3','/data/backups/smoke.sqlite3']))
-        restored="from src.storage import SnapshotStore; assert len(SnapshotStore('/data/backups/smoke.sqlite3').orders())==2; print('Backup restoration verified')"
+        restored="from pathlib import Path; from src.storage import SnapshotStore; assert len(SnapshotStore('/data/backups/smoke.sqlite3').orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(Path('/data/backups/smoke.sqlite3')).events())==2; print('Backup restoration verified')"
         print(run(['docker','exec',app,'python','-c',restored]))
         run(['docker','restart',app])
-        retained="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); assert len(s.orders())==2; print('Persistent volume survived app restart')"
+        retained="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); assert len(s.orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(s.path).events())==2; print('Persistent volume survived app restart')"
         print(run(['docker','exec',app,'python','-c',retained]))
 except Exception:
     print(subprocess.run(['docker','logs',app],capture_output=True,text=True).stderr)
