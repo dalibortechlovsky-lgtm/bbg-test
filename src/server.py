@@ -14,6 +14,8 @@ from .performance import PerformanceStore, calculate_performance, HEADERS as PER
 from .risk import RiskStore, derivatives_risk, HEADERS as RISK_HEADERS
 from .report import report_data, report_html, report_csv, mars_report_html, mars_report_csv
 from .mars import MarsStore, enrich_base_data
+from .ptd import PtdStore
+from .ubs_activity import ActivityStore, activity_csv
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,6 +24,24 @@ class Handler(BaseHTTPRequestHandler):
     store = None
     public_origin = None
     quote_store = None
+
+    def performance_state(self,snapshot,bloomberg):
+        manual=PerformanceStore(self.store.path).events() if self.store else []
+        ptd=PtdStore(self.store.path).view(snapshot,bloomberg,cash_events=manual) if self.store else None
+        activity=ActivityStore(self.store.path).view(snapshot) if self.store else None
+        # UBS is the accounting source. Once broker activity is present, PTD
+        # remains an independent audit source, never a second execution ledger.
+        performance=calculate_performance(manual)
+        performance['portfolio_pnl_verified']=False
+        if ptd:
+            ptd['accounting_status']='Independent audit source; execution versus opening-mark classification must be verified before accounting'
+            performance['warnings'].append('PTD is retained as an independent cross-check; its booked trades and year-start resets are not applied to the accounting ledger.')
+        if activity:
+            performance['source']='Explicit performance ledger only; UBS activity is staged for reconciliation'
+            performance['portfolio_pnl_verified']=False
+            performance['warnings']+=activity['warnings']
+            performance['warnings'].append('UBS activity and PTD records are not yet applied to performance totals; opening inventory and valuation reconciliation are required.')
+        return performance,ptd,activity
 
     def reply(self, data, content_type='application/json', status=200, filename=None):
         if not isinstance(data, bytes):
@@ -38,6 +58,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path=urlsplit(self.path).path
+        if path == '/api/reports/ubs-activity.csv':
+            activity=ActivityStore(self.store.path).view(self.store.latest()) if self.store else None
+            if not activity:
+                self.reply({'error':'Import UBS account activity first'},status=400)
+            else:
+                self.reply(activity_csv(activity),'text/csv; charset=utf-8',filename='ubs-activity-review.csv')
+            return
         if path in {'/reports/mars','/api/reports/mars.html','/api/reports/mars.csv'}:
             snapshot=MarsStore(self.store.path).latest() if self.store else None
             snapshot=enrich_base_data(snapshot,self.quote_store.view() if self.quote_store else {'quotes':[]})
@@ -57,11 +84,13 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 snapshot=self.store.latest() if self.store else None
                 bloomberg=self.quote_store.view() if self.quote_store else {'quotes':[]}
-                perf=calculate_performance(PerformanceStore(self.store.path).events() if self.store else [])
+                perf,ptd,activity=self.performance_state(snapshot,bloomberg)
                 risk=derivatives_risk(snapshot,RiskStore(self.store.path).terms() if self.store else [])
                 query=parse_qs(urlsplit(self.path).query)
                 data=report_data(snapshot,portfolio_analytics(snapshot,bloomberg),perf,risk,
                     query.get('size_currency',['EUR'])[0],query.get('pnl_currency',['CZK'])[0])
+                data['ptd']=ptd
+                data['activity']=activity
                 if path.endswith('.csv'):
                     self.reply(report_csv(data),'text/csv; charset=utf-8',filename='trader-report-'+data['date']+'.csv')
                 else:
@@ -81,13 +110,17 @@ class Handler(BaseHTTPRequestHandler):
             public = None if snapshot is None else {key: value for key, value in snapshot.items() if key != 'positions'}
             positions = [] if snapshot is None else [
                 {key: value for key, value in row.items() if key != 'raw'} for row in snapshot['positions']]
+            performance,ptd,activity=self.performance_state(snapshot,bloomberg)
             self.reply({
                 'mode': 'development',
                 'asset_classes': ['Equities', 'Equity derivatives', 'Bonds', 'FX'],
                 'bloomberg': bloomberg['status'],
                 'bloomberg_data': bloomberg,
                 'analytics': portfolio_analytics(snapshot, bloomberg),
-                'performance': calculate_performance(PerformanceStore(self.store.path).events() if self.store else []),
+                'performance': performance,
+                'ptd':ptd,
+                'activity':activity,
+                'manual_performance_event_count':len(PerformanceStore(self.store.path).events()) if self.store else 0,
                 'risk': derivatives_risk(snapshot,RiskStore(self.store.path).terms() if self.store else []),
                 'risk_inputs_count': len(RiskStore(self.store.path).terms()) if self.store else 0,
                 'mars': enrich_base_data(MarsStore(self.store.path).latest(),bloomberg) if self.store else None,
@@ -114,11 +147,38 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def do_POST(self):
+        if self.path == '/api/import/ubs' and self.store:
+            expected=self.public_origin or 'http://'+self.headers.get('Host','')
+            if self.headers.get('X-Import-Format')!='ubs-batch' or (self.headers.get('Origin') is not None and self.headers.get('Origin')!=expected):
+                self.reply({'error':'Import must originate from the dashboard'},status=403)
+                return
+            try:
+                payload=self.read_json(max_bytes=8*1024*1024)
+                if not isinstance(payload,dict) or set(payload)!={'files'}:
+                    raise ValueError('Expected files containing native UBS CSV text')
+                self.reply(ActivityStore(self.store.path).import_batch(payload['files']))
+            except (ValueError,UnicodeError) as exc:
+                self.reply({'error':str(exc)},status=400)
+            return
+        if self.path in {'/api/ptd/correction','/api/ptd/settings'} and self.store:
+            expected=self.public_origin or 'http://'+self.headers.get('Host','')
+            if self.headers.get('X-PTD-Action')!='manage' or (self.headers.get('Origin') is not None and self.headers.get('Origin')!=expected):
+                self.reply({'error':'Use PTD review controls in the dashboard'},status=403)
+                return
+            try:
+                payload=self.read_json()
+                if not isinstance(payload,dict): raise ValueError('Expected PTD action object')
+                store=PtdStore(self.store.path)
+                result=store.supersede(payload.get('old_id'),payload.get('new_id'),payload.get('reason')) if self.path.endswith('correction') else store.configure(payload)
+                self.reply(result)
+            except (ValueError,UnicodeError) as exc:
+                self.reply({'error':str(exc)},status=400)
+            return
         if self.path.startswith('/api/bridge/') and self.quote_store:
             self.bridge_post()
             return
         formats = {'/api/import/positions': 'ubs-positions', '/api/import/orders': 'ubs-orders',
-                   '/api/import/performance':'desk-performance','/api/import/risk':'desk-risk','/api/import/mars':'bloomberg-mars'}
+                   '/api/import/performance':'desk-performance','/api/import/risk':'desk-risk','/api/import/mars':'bloomberg-mars','/api/import/ptd':'bloomberg-ptd'}
         if self.path not in formats or not self.store:
             self.send_error(404)
             return
@@ -146,7 +206,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply({key:result[key] for key in ['id','count','as_of','portfolio','already_imported']})
                 return
             content = raw.decode('utf-8-sig')
-            if self.path=='/api/import/performance':
+            if self.path=='/api/import/ptd':
+                result=PtdStore(self.store.path).import_content(content)
+            elif self.path=='/api/import/performance':
                 result=PerformanceStore(self.store.path).import_content(content)
             elif self.path=='/api/import/risk':
                 result=RiskStore(self.store.path).import_content(content,self.store.latest())
@@ -156,19 +218,19 @@ class Handler(BaseHTTPRequestHandler):
         except (UnicodeError, ValueError) as exc:
             self.reply({'error': str(exc)}, status=400)
             return
-        if self.path in {'/api/import/performance','/api/import/risk'}:
+        if self.path in {'/api/import/performance','/api/import/risk','/api/import/ptd'}:
             self.reply(result)
         elif self.path == '/api/import/orders':
             self.reply(result, status=200 if result['accepted'] else 409)
         else:
             self.reply({key: result[key] for key in ['count', 'as_of', 'already_imported']})
 
-    def read_json(self):
+    def read_json(self,max_bytes=1024*1024):
         if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
             raise ValueError('Expected application/json')
         length = int(self.headers.get('Content-Length', '0'))
-        if not 0 < length <= 1024 * 1024:
-            raise ValueError('JSON body must be between 1 byte and 1 MiB')
+        if not 0 < length <= max_bytes:
+            raise ValueError('JSON body exceeds the supported size')
         def nonfinite(value):
             raise ValueError('Non-finite JSON number')
         return json.loads(self.rfile.read(length).decode('utf-8'), parse_constant=nonfinite)

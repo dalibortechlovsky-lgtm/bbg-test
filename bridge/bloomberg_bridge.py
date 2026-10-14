@@ -28,7 +28,7 @@ def request_quotes(securities):
         request = session.getService('//blp/refdata').createRequest('ReferenceDataRequest')
         for security in securities:
             request.getElement('securities').appendValue(security)
-        for field in ['PX_LAST', 'CRNCY', 'ID_ISIN']:
+        for field in ['PX_LAST', 'CRNCY', 'ID_ISIN', 'ID_BB_UNIQUE']:
             request.getElement('fields').appendValue(field)
         session.sendRequest(request)
         rows = []

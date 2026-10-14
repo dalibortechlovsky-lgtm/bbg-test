@@ -45,7 +45,11 @@ with urllib.request.urlopen(urllib.request.Request(login['url']+'/api/status',he
     state=json.load(r)
 Path(sys.argv[1]).write_text(json.dumps({'positions':len(state['positions']),'trades':len(state['trades']),
                                       'snapshot_id':(state.get('snapshot') or {}).get('id'),
-                                      'performance_events':state.get('performance',{}).get('stored_event_count',0),
+                                      'performance_events':state.get('manual_performance_event_count',state.get('performance',{}).get('stored_event_count',0)),
+                                      'ubs_activity_records':(state.get('activity') or {}).get('record_count',0),
+                                      'ubs_activity_exports':(state.get('activity') or {}).get('export_count',0),
+                                      'ptd_records':(state.get('ptd') or {}).get('stored_record_count',0),
+                                      'ptd_corrections':len((state.get('ptd') or {}).get('corrections',[])),
                                       'risk_inputs':state.get('risk_inputs_count',0),
                                       'mars_snapshots':state.get('mars_snapshot_count',0)}))
 PY
@@ -86,7 +90,11 @@ for attempt in range(20):
         assert state['execution_enabled'] is False and 'bloomberg_data' in state
         assert 'analytics' in state
         assert state['performance']['method']=='average_cost'
-        assert state['performance']['stored_event_count']==before['performance_events']
+        assert state['manual_performance_event_count']==before['performance_events']
+        assert (state.get('activity') or {}).get('record_count',0)==before['ubs_activity_records']
+        assert (state.get('activity') or {}).get('export_count',0)==before['ubs_activity_exports']
+        assert (state.get('ptd') or {}).get('stored_record_count',0)==before['ptd_records']
+        assert len((state.get('ptd') or {}).get('corrections',[]))==before['ptd_corrections']
         assert state['risk_inputs_count']==before['risk_inputs']
         assert state['mars_snapshot_count']==before['mars_snapshots']
         if state.get('mars'):

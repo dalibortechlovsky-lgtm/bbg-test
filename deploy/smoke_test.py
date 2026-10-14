@@ -53,6 +53,7 @@ try:
         from test_positions import sample
         from test_performance import event, csv_events
         from test_mars import workbook
+        from test_ubs_activity import account_csv, posting
         import base64
         client='''
 import base64,json,ssl,time
@@ -155,6 +156,35 @@ assert 'SECOND US Equity' in cloud_request(mars_device['config'],'watchlist_url'
 with opener.open(Request('https://dashboard.test/api/bridge/revoke',data=json.dumps({'id':mars_device['id']}).encode(),headers=manage),timeout=5) as r:
  assert json.load(r)['revoked']
 print('MARS base-only XLSX import, protected reports and scoped ticker watchlist verified')
+ubs_headers={'Authorization':auth,'Content-Type':'application/json','X-Import-Format':'ubs-batch','Origin':'https://dashboard.test'}
+ubs_body=json.dumps({'files':[__UBS_ACTIVITY_CONTENT__]}).encode()
+with opener.open(Request('https://dashboard.test/api/import/ubs',data=ubs_body,headers=ubs_headers),timeout=5) as r:
+ assert json.load(r)['files'][0]['added']==2
+with opener.open(Request('https://dashboard.test/api/import/ubs',data=ubs_body,headers=ubs_headers),timeout=5) as r:
+ assert json.load(r)['files'][0]['existing']==2
+with opener.open(Request(url,headers={'Authorization':auth}),timeout=5) as r:
+ state=json.load(r)
+assert state['activity']['record_count']==2 and state['activity']['export_count']==1
+assert state['performance']['portfolio_pnl_verified'] is False
+assert state['manual_performance_event_count']==2
+with opener.open(Request('https://dashboard.test/api/bridge/token',data=json.dumps({'name':'Synthetic UBS scope check'}).encode(),headers=manage),timeout=5) as r:
+ ubs_device=json.load(r)
+assert cloud_request(ubs_device['config'],'watchlist_url')['securities']
+for route in ['/api/import/ubs','/api/reports/ubs-activity.csv']:
+ try:
+  opener.open(Request('https://dashboard.test'+route,data=ubs_body if route.endswith('/ubs') else None,
+                      headers={'Authorization':'Bearer '+ubs_device['config']['token']}),timeout=5)
+ except HTTPError as e: assert e.code==401
+ else: raise AssertionError('Device token accessed UBS activity')
+with opener.open(Request('https://dashboard.test/api/bridge/revoke',data=json.dumps({'id':ubs_device['id']}).encode(),headers=manage),timeout=5) as r:
+ assert json.load(r)['revoked']
+try:
+ opener.open(Request('https://dashboard.test/api/import/ubs',data=ubs_body,headers=ubs_headers|{'Origin':'https://foreign.test'}),timeout=5)
+except HTTPError as e: assert e.code==403
+else: raise AssertionError('Foreign origin imported UBS batch')
+with opener.open(Request('https://dashboard.test/api/reports/ubs-activity.csv',headers={'Authorization':auth}),timeout=5) as r:
+ assert b'POSTING' in r.read()
+print('Protected UBS activity import, idempotency, review export and token scope verified')
 
 
 
@@ -162,6 +192,8 @@ print('MARS base-only XLSX import, protected reports and scoped ticker watchlist
         client=client.replace('__ORDER_CONTENT__',json.dumps(export()))
         client=client.replace('__MARS_CONTENT__',json.dumps(base64.b64encode(workbook()).decode()))
         client=client.replace('__POSITIONS_CONTENT__',json.dumps(sample()))
+        client=client.replace('__UBS_ACTIVITY_CONTENT__',json.dumps(account_csv([
+            posting('-100'),posting('-5','Third-Party Charges','TRADE1')])))
         client=client.replace('__PERFORMANCE_CONTENT__',json.dumps(csv_events([
             event('opening','OPENING','10','100','0'),event('sale','SELL','5','120','2',sequence=1)])))
         print(run(['docker','exec','-i','-e','NO_PROXY=dashboard.test,app,localhost,127.0.0.1','-e','no_proxy=dashboard.test,app,localhost,127.0.0.1','-e','SSL_CERT_FILE=/tmp/root.crt',app,'python','-'],input=client))
@@ -174,10 +206,10 @@ print('MARS base-only XLSX import, protected reports and scoped ticker watchlist
         persist="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); r=s.import_orders_content("+input_data+"); assert r['added']==1; print('Non-root database write verified')"
         print(run(['docker','exec',app,'python','-c',persist]))
         print(run(['docker','exec',app,'python','-m','src.backup','/data/frontoffice.sqlite3','/data/backups/smoke.sqlite3']))
-        restored="from pathlib import Path; from src.storage import SnapshotStore; assert len(SnapshotStore('/data/backups/smoke.sqlite3').orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(Path('/data/backups/smoke.sqlite3')).events())==2; from src.mars import MarsStore; assert MarsStore(Path('/data/backups/smoke.sqlite3')).latest()['count']==2; print('Backup restoration verified')"
+        restored="from pathlib import Path; from src.storage import SnapshotStore; assert len(SnapshotStore('/data/backups/smoke.sqlite3').orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(Path('/data/backups/smoke.sqlite3')).events())==2; from src.mars import MarsStore; assert MarsStore(Path('/data/backups/smoke.sqlite3')).latest()['count']==2; from src.ubs_activity import ActivityStore; assert ActivityStore('/data/backups/smoke.sqlite3').view()['record_count']==2; print('Backup restoration verified')"
         print(run(['docker','exec',app,'python','-c',restored]))
         run(['docker','restart',app])
-        retained="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); assert len(s.orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(s.path).events())==2; from src.mars import MarsStore; assert MarsStore(s.path).latest()['count']==2; print('Persistent volume survived app restart')"
+        retained="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); assert len(s.orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(s.path).events())==2; from src.mars import MarsStore; assert MarsStore(s.path).latest()['count']==2; from src.ubs_activity import ActivityStore; assert ActivityStore(s.path).view()['record_count']==2; print('Persistent volume survived app restart')"
         print(run(['docker','exec',app,'python','-c',retained]))
 except Exception:
     print(subprocess.run(['docker','logs',app],capture_output=True,text=True).stderr)

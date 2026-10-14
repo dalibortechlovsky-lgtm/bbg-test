@@ -148,7 +148,10 @@ class QuoteStore:
             currency = fields.get('CRNCY') or None
             if currency is not None and (not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha()):
                 raise ValueError('Invalid quote currency')
-            clean.append({'security': security, 'isin': isin, 'price': str(price), 'currency': currency,
+            bbid=fields.get('ID_BB_UNIQUE') or None
+            if bbid is not None and (not isinstance(bbid,str) or len(bbid)>64 or any(ord(c)<32 for c in bbid)):
+                raise ValueError('Invalid Bloomberg unique identifier')
+            clean.append({'security': security, 'isin': isin, 'bbid':bbid, 'price': str(price), 'currency': currency,
                           'observed_at': observed.isoformat(), 'uploaded_at': now.isoformat(), 'source': 'Bloomberg PX_LAST'})
         if status == 'connected' and not clean:
             raise ValueError('Connected bridge must supply at least one quote')

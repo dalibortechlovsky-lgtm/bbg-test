@@ -80,6 +80,8 @@ def report_csv(data):
                      'size_'+data['size_currency'],'snapshot_unrealized_'+data['pnl_currency'],'realized_native','income_native','notes'])
     def emit(values): writer.writerow([spreadsheet(v) for v in values])
     emit(['BASIS',data['date'],'','','','','','','','','','',data['basis']])
+    for warning in data['performance']['warnings']:
+        emit(['BASIS',data['date'],'','','','','','','','','','',warning])
     for p in data['rows']:
         emit([p['group'],data['holdings_as_of'],p['description'],p['identifier'],p['currency'],p['quantity'],p['price'],p['price_convention'],p['size'],p['unrealized'],'','', 'UBS snapshot'])
     for r in data['performance']['realized']:

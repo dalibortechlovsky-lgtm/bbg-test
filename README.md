@@ -1,5 +1,25 @@
 # Front Office Trade Control
 
+## UBS transaction workflow in development
+
+The combined **Import UBS data** control accepts a positions CSV and the native
+account transaction CSVs together. The supplied format uses one account file per
+currency. The complete selection is validated atomically; overlapping records
+are deduplicated and changed economic transaction components require review.
+Exports retain their source rows and running cash-balance proofs. Trade, booking
+and value dates, reversals, payment/fee components, deposit principal, option
+Valor references and matched FX legs remain distinct.
+
+The activity reconciliation and CSV export are available in the development
+dashboard. Account activity and PTD are not automatically posted into performance
+totals. Whole-portfolio daily/YTD P/L and asset/FX attribution still require the
+opening inventory/costs, year-start and closing marks, historical FX, settlement
+coverage and external-flow classification. This revision is **not deployed**;
+rollout remains paused at the owner's request. See [the import workflow](docs/import-workflow.md).
+
+Validate with `python -m unittest discover -s tests -p 'test_*.py' -v`.
+The app remains standard-library-only; no new installation step is needed.
+
 Initial control-layer prototype for the workflow:
 
 1. UBS KeyTrader execution
