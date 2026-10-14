@@ -72,3 +72,16 @@ class PerformanceTests(unittest.TestCase):
         r=self.run_events(events)
         self.assertEqual(r['realized'][0]['amount'],'198')
         self.assertEqual(r['open_inventory'][0]['quantity'],'-1')
+
+    def test_fractional_average_cost_round_trip_preserves_pnl(self):
+        events=[event('o','OPENING','0','0','0'),
+                event('b1','BUY','10','3.21','0',sequence=1),
+                event('b2','BUY','3','4.56','0',sequence=2),
+                event('b3','BUY','4','5.67','0',sequence=3),
+                event('s','SELL','17','8.9','0',sequence=4)]
+        result=self.run_events(events)
+        # Expected proceeds less summed acquisition cost, independent of
+        # the engine's rounded weighted-average representation.
+        expected=Decimal('17')*Decimal('8.9')-(Decimal('10')*Decimal('3.21')+Decimal('3')*Decimal('4.56')+Decimal('4')*Decimal('5.67'))
+        self.assertEqual(Decimal(result['totals']['USD']['realized']).quantize(Decimal('.01')),expected)
+        self.assertFalse(result['open_inventory'])

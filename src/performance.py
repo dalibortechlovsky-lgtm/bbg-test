@@ -180,8 +180,11 @@ def calculate_performance(events, as_of=None):
     for r in realized:
         c=r['currency']
         t=totals.setdefault(c,{'realized':Decimal(0),'income':Decimal(0),'ytd_realized':Decimal(0),'ytd_income':Decimal(0)})
-        t['realized']+=dec(r['amount'],'amount')
-        if r['date'][:4]==as_of[:4]: t['ytd_realized']+=dec(r['amount'],'amount')
+        # Calculated average costs may have more fractional digits than imported
+        # money inputs. Apply input precision limits only while parsing inputs.
+        calculated=Decimal(r['amount'])
+        t['realized']+=calculated
+        if r['date'][:4]==as_of[:4]: t['ytd_realized']+=calculated
     for r in income:
         t=totals.setdefault(r['currency'],{'realized':Decimal(0),'income':Decimal(0),'ytd_realized':Decimal(0),'ytd_income':Decimal(0)})
         t['income']+=dec(r['amount'],'amount')
