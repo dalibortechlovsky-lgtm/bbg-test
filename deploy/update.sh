@@ -81,6 +81,13 @@ for attempt in range(20):
         assert len(state['positions'])==before['positions'] and len(state['trades'])==before['trades']
         assert (state.get('snapshot') or {}).get('id')==before['snapshot_id']
         assert state['execution_enabled'] is False and 'bloomberg_data' in state
+        assert 'analytics' in state
+        if state.get('snapshot'):
+            from decimal import Decimal
+            analytics=state['analytics']
+            assert analytics['position_count']==before['positions']
+            assert Decimal(analytics['broker_market_value'])==Decimal(state['snapshot']['summary']['market_value'])
+            assert analytics['daily_pnl'] is None and analytics['realized_pnl'] is None
         break
     except Exception:
         time.sleep(3)

@@ -107,6 +107,9 @@ class PositionsTests(unittest.TestCase):
                 self.assertFalse(data['execution_enabled'])
                 self.assertEqual(len(data['positions']), 5)
                 self.assertEqual(data['snapshot']['as_of'], '2026-10-08')
+                self.assertEqual(data['analytics']['broker_market_value'], '12837')
+                self.assertEqual(data['analytics']['indicative_market_value'], '12837')
+                self.assertIsNone(data['analytics']['daily_pnl'])
                 self.assertNotIn('raw', data['positions'][0])
                 for override, code in [({'Origin':'https://untrusted.example'},403),
                                        ({'X-Import-Format':'wrong'},403),

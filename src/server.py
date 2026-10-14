@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from .storage import SnapshotStore, DEFAULT_DB
 from .quotes import QuoteStore
+from .analytics import portfolio_analytics
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,6 +45,7 @@ class Handler(BaseHTTPRequestHandler):
                 'asset_classes': ['Equities', 'Equity derivatives', 'Bonds', 'FX'],
                 'bloomberg': bloomberg['status'],
                 'bloomberg_data': bloomberg,
+                'analytics': portfolio_analytics(snapshot, bloomberg),
                 'bridge_tokens': self.quote_store.devices() if self.quote_store else [],
                 'ubs': f"Snapshot as of {snapshot['as_of']} · Not live" if snapshot else 'No snapshot imported',
                 'execution_enabled': False,

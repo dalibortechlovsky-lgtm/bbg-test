@@ -215,3 +215,29 @@ Offline and local HTTPS tests validate this integration; a live Windows-to-hoste
 upload has not yet occurred. Generic ISIN listing resolution and missing-ISIN options
 still need mapping before live portfolio valuation. Bloomberg chat, UBS execution,
 MARS booking, Greeks and ChatGPT tool integration are not active.
+
+## Portfolio analytics
+
+`src.analytics.portfolio_analytics` is a read-only Decimal calculation included in
+`/api/status` and the dashboard. It reconciles broker market value, reports native
+cash/deposits and net/gross denomination allocation, and computes snapshot
+unrealized P/L only for securities with UBS cost values (assumed in the export
+valuation currency). Cost coverage is explicit; accrued interest is separate.
+
+The mixed-date indicative value applies same-currency, positive, recent Bloomberg
+PX_LAST / UBS market-price ratios only to the UBS equity-investment group with
+amount quotes. This assumes unchanged listing, quote units, holdings and no
+corporate actions; it is not a verified valuation or daily P/L. Recent positive
+CCYBASE Curncy quotes in base currency adjust broker values using the direct
+export FX rate, or its inverse. Missing/stale/incompatible prices and unsupported
+instruments retain UBS prices; FX may still be adjusted. Latest fresh device
+quotes are selected deterministically by observation time. No bank snapshot is
+modified and no order summaries are applied to holdings.
+
+Bonds, structured products and unmapped options require verified terms before
+price repricing. Daily/realized P/L, Greeks, underlying currency exposure and
+portfolio risk remain unavailable until fills, cash flows, opening valuations
+and instrument terms are supplied. Currency allocation is denomination, not delta.
+
+Run `python -m unittest discover -s tests -v`. The source update installer checks
+analytics reconciliation and preserves the existing records/credentials.
