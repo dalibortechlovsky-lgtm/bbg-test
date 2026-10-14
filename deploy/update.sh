@@ -46,7 +46,8 @@ with urllib.request.urlopen(urllib.request.Request(login['url']+'/api/status',he
 Path(sys.argv[1]).write_text(json.dumps({'positions':len(state['positions']),'trades':len(state['trades']),
                                       'snapshot_id':(state.get('snapshot') or {}).get('id'),
                                       'performance_events':state.get('performance',{}).get('stored_event_count',0),
-                                      'risk_inputs':state.get('risk_inputs_count',0)}))
+                                      'risk_inputs':state.get('risk_inputs_count',0),
+                                      'mars_snapshots':state.get('mars_snapshot_count',0)}))
 PY
 container=$(docker compose --env-file .env ps -q app)
 docker compose --env-file .env exec -T app python -m src.backup /data/frontoffice.sqlite3 "/data/backups/update-$stamp.sqlite3"
@@ -87,6 +88,9 @@ for attempt in range(20):
         assert state['performance']['method']=='average_cost'
         assert state['performance']['stored_event_count']==before['performance_events']
         assert state['risk_inputs_count']==before['risk_inputs']
+        assert state['mars_snapshot_count']==before['mars_snapshots']
+        if state.get('mars'):
+            assert state['mars']['calculation_policy']=='base_data_only'
         assert 'risk' in state
         if state.get('snapshot'):
             from decimal import Decimal
@@ -101,6 +105,10 @@ else: raise RuntimeError('Updated dashboard readiness or data-preservation check
 # Verify report downloads without importing any synthetic trading data.
 if state.get('snapshot'):
     for path,expected in [('/api/reports/trader.html',b'Trading Overview'),('/api/reports/trader.csv',b'section,date')]:
+        with urllib.request.urlopen(urllib.request.Request(base+path,headers={'Authorization':auth}),timeout=15) as r:
+            assert r.status==200 and expected in r.read()
+if state.get('mars'):
+    for path,expected in [('/api/reports/mars.html',b'MARS base data'),('/api/reports/mars.csv',b'valuation_date')]:
         with urllib.request.urlopen(urllib.request.Request(base+path,headers={'Authorization':auth}),timeout=15) as r:
             assert r.status==200 and expected in r.read()
 # Exercise device auth using an empty starting heartbeat; never inject test prices.

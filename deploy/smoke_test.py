@@ -52,6 +52,8 @@ try:
         from test_keytrader import export
         from test_positions import sample
         from test_performance import event, csv_events
+        from test_mars import workbook
+        import base64
         client='''
 import base64,json,ssl,time
 from urllib.request import Request,build_opener,ProxyHandler,HTTPSHandler,HTTPRedirectHandler
@@ -134,10 +136,31 @@ for route in ['/reports/trader','/api/reports/trader.html','/api/reports/trader.
  with opener.open(Request('https://dashboard.test'+route,headers={'Authorization':auth}),timeout=5) as r:
   assert r.status==200 and len(r.read())>100
 print('Authenticated report downloads, anonymous rejection and average-cost performance verified')
+mars_headers={'Authorization':auth,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','X-Import-Format':'bloomberg-mars','X-Mars-Metadata':'{"as_of":"2026-10-14","portfolio_currency":"CZK"}','Origin':'https://dashboard.test'}
+with opener.open(Request('https://dashboard.test/api/import/mars',data=base64.b64decode(__MARS_CONTENT__),headers=mars_headers),timeout=5) as r:
+ assert json.load(r)['count']==2
+with opener.open(Request(url,headers={'Authorization':auth}),timeout=5) as r:
+ state=json.load(r)
+assert state['mars']['calculation_policy']=='base_data_only'
+assert 'P&L Port Ccy' not in state['mars']['instruments'][0]['fields']
+for route in ['/api/reports/mars.csv','/reports/mars']:
+ try: opener.open('https://dashboard.test'+route,timeout=5)
+ except HTTPError as e: assert e.code==401
+ else: raise AssertionError('Anonymous MARS report accepted')
+ with opener.open(Request('https://dashboard.test'+route,headers={'Authorization':auth}),timeout=5) as r:
+  assert r.status==200 and len(r.read())>100
+with opener.open(Request('https://dashboard.test/api/bridge/token',data=json.dumps({'name':'Synthetic MARS bridge'}).encode(),headers=manage),timeout=5) as r:
+ mars_device=json.load(r)
+assert 'SECOND US Equity' in cloud_request(mars_device['config'],'watchlist_url')['securities']
+with opener.open(Request('https://dashboard.test/api/bridge/revoke',data=json.dumps({'id':mars_device['id']}).encode(),headers=manage),timeout=5) as r:
+ assert json.load(r)['revoked']
+print('MARS base-only XLSX import, protected reports and scoped ticker watchlist verified')
+
 
 
 '''
         client=client.replace('__ORDER_CONTENT__',json.dumps(export()))
+        client=client.replace('__MARS_CONTENT__',json.dumps(base64.b64encode(workbook()).decode()))
         client=client.replace('__POSITIONS_CONTENT__',json.dumps(sample()))
         client=client.replace('__PERFORMANCE_CONTENT__',json.dumps(csv_events([
             event('opening','OPENING','10','100','0'),event('sale','SELL','5','120','2',sequence=1)])))
@@ -151,10 +174,10 @@ print('Authenticated report downloads, anonymous rejection and average-cost perf
         persist="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); r=s.import_orders_content("+input_data+"); assert r['added']==1; print('Non-root database write verified')"
         print(run(['docker','exec',app,'python','-c',persist]))
         print(run(['docker','exec',app,'python','-m','src.backup','/data/frontoffice.sqlite3','/data/backups/smoke.sqlite3']))
-        restored="from pathlib import Path; from src.storage import SnapshotStore; assert len(SnapshotStore('/data/backups/smoke.sqlite3').orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(Path('/data/backups/smoke.sqlite3')).events())==2; print('Backup restoration verified')"
+        restored="from pathlib import Path; from src.storage import SnapshotStore; assert len(SnapshotStore('/data/backups/smoke.sqlite3').orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(Path('/data/backups/smoke.sqlite3')).events())==2; from src.mars import MarsStore; assert MarsStore(Path('/data/backups/smoke.sqlite3')).latest()['count']==2; print('Backup restoration verified')"
         print(run(['docker','exec',app,'python','-c',restored]))
         run(['docker','restart',app])
-        retained="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); assert len(s.orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(s.path).events())==2; print('Persistent volume survived app restart')"
+        retained="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); assert len(s.orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(s.path).events())==2; from src.mars import MarsStore; assert MarsStore(s.path).latest()['count']==2; print('Persistent volume survived app restart')"
         print(run(['docker','exec',app,'python','-c',retained]))
 except Exception:
     print(subprocess.run(['docker','logs',app],capture_output=True,text=True).stderr)

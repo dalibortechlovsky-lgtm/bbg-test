@@ -136,3 +136,36 @@ body{font:12px Arial,sans-serif;color:#161616;background:white;margin:32px auto;
     for warning in perf['warnings']+ [r['description']+': '+r['reason'] for r in data['risk']['uncovered']]: parts.append('<li>'+e(warning)+'</li>')
     parts.append('</ul><p class="notes">Generated '+e(data['generated_at'])+' · Execution disabled · Missing figures remain unavailable.</p></html>')
     return ''.join(parts).encode()
+
+
+def mars_report_csv(snapshot):
+    from .mars import BASE_HEADERS
+    out=StringIO(); writer=csv.writer(out)
+    writer.writerow(['valuation_date','report_currency_setting','pnl_period_setting','group']+BASE_HEADERS+['Bloomberg_PX_LAST','Bloomberg_CRNCY','Bloomberg_ID_ISIN','quote_observed_at','quote_stale'])
+    for p in snapshot['instruments']:
+        q=p.get('quote') or {}
+        writer.writerow([spreadsheet(v) for v in [snapshot['as_of'],snapshot['portfolio_currency'],snapshot['pnl_period'],p['group']]+[p['fields'][h] for h in BASE_HEADERS]+[q.get(h) for h in ['price','currency','isin','observed_at','stale']]])
+    return out.getvalue().encode('utf-8-sig')
+
+
+def mars_report_html(snapshot):
+    e=lambda v:escape(str(v),quote=True)
+    parts=['''<!doctype html><html lang="en"><meta charset="utf-8"><title>Trading Overview · MARS base data</title><style>
+body{font:12px Arial,sans-serif;color:#161616;background:white;max-width:1150px;margin:32px auto;padding:24px}h1{font-size:22px;color:#777}h2{font-size:14px;margin-top:24px}table{border-collapse:collapse;width:100%;margin:12px 0}td,th{padding:5px 7px;text-align:left;vertical-align:top}.num{text-align:right;white-space:nowrap}.group td{font-weight:bold;border-bottom:1px solid black;padding-top:18px}.notes{font-size:11px;color:#555;line-height:1.5}.toolbar{background:#eee;padding:12px}thead{display:table-header-group}tr{break-inside:avoid}@media print{body{margin:0;max-width:none;padding:0;font-size:9px}td,th{padding:4px}.toolbar{display:none}@page{size:A4 landscape;margin:12mm}}
+</style><div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div><h1>Trading Overview · MARS base data</h1>''']
+    parts.append('<p>Portfolio '+e(snapshot['portfolio'])+' · Valuation date '+e(snapshot['as_of'] or 'Unconfirmed')+' · Report currency setting '+e(snapshot['portfolio_currency'] or 'Unconfirmed')+' · P/L period setting '+e(snapshot['pnl_period'] or 'Unconfirmed')+'</p>')
+    parts.append('<p class="notes">MARS calculated P/L, currency-converted values and Greeks are excluded. This base-data export contains identifiers, source position display and contract fields. Currency, quote scale and multipliers must be verified before recalculation.</p><table><thead><tr><th>Instrument / underlying</th><th>Position display</th><th>Notional · source units</th><th>MktPx · unverified units</th><th>CostPx · unverified units</th><th>Strike</th><th>Trade date</th><th>Expiry / delivery</th></tr></thead><tbody>')
+    groups=[g['label'] for g in snapshot['groups']]+['Ungrouped instruments']
+    for group in groups:
+        rows=[r for r in snapshot['instruments'] if r['group']==group]
+        if not rows: continue
+        parts.append('<tr class="group"><td colspan="8">'+e(group)+'</td></tr>')
+        for p in rows:
+            f=p['fields']
+            q=p.get('quote')
+            quote_text='' if not q else ' · Independent quote: '+fmt(q['price'])+' '+(q['currency'] or 'Unspecified')+' · '+q['observed_at']+(' · Stale' if q['stale'] else ' · Recently received')
+            parts.append('<tr><td>'+e(p['label'].removeprefix('--'))+'<br><small>'+e(p['ticker'])+' / '+e(f['Underlying'] or '—')+e(quote_text)+'</small></td><td>'+e(f['Position'])+'</td>'+''.join('<td class="num">'+e(fmt(f[h]))+'</td>' for h in ['Notional','MktPx','CostPx','Strike'])+'<td>'+e(f['Trade Date'] or '—')+'</td><td>'+e(f['Expiry Date'] or '—')+' / '+e(f['Delivery Date'] or '—')+'</td></tr>')
+    parts.append('</tbody></table><h2>P/L and risk calculations</h2><p>Not calculated from MARS totals. Use verified market data, instrument currencies/units, opening costs, dated executions and cash flows for independent calculations.</p><ul class="notes">')
+    for warning in snapshot['warnings']: parts.append('<li>'+e(warning)+'</li>')
+    parts.append('</ul><p class="notes">Imported '+e(snapshot['imported_at'])+' · Static file snapshot · Execution disabled</p></html>')
+    return ''.join(parts).encode()

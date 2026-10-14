@@ -7,6 +7,7 @@ import secrets
 import sqlite3
 import uuid
 from .storage import SnapshotStore, has_table
+from .mars import MarsStore
 
 
 def utcnow():
@@ -87,15 +88,23 @@ class QuoteStore:
 
     def watchlist(self):
         snapshot = SnapshotStore(self.path).latest()
-        if not snapshot:
+        mars = MarsStore(self.path).latest()
+        mars_tickers = {p['ticker'] for p in mars['instruments']} if mars else set()
+        if not snapshot and not mars:
             return {'securities': ['IBM US Equity'], 'unmapped_count': 0, 'snapshot_as_of': None}
-        positions = snapshot['positions']
+        positions = snapshot['positions'] if snapshot else []
         ids = sorted({p['isin'] for p in positions if p.get('isin')})
-        base = snapshot['valuation_currency']
+        base = snapshot['valuation_currency'] if snapshot else None
         currencies = sorted({p['currency'] for p in positions if p['currency'] != base})
-        return {'securities': ['/isin/' + value for value in ids] + [ccy + base + ' Curncy' for ccy in currencies],
+        securities = {'/isin/' + value for value in ids} | mars_tickers | {ccy + base + ' Curncy' for ccy in currencies}
+        if mars and mars.get('portfolio_currency'):
+            report_ccy=mars['portfolio_currency']
+            quote_currencies={q['currency'] for q in self.view()['quotes'] if q['security'] in mars_tickers and q.get('currency')}
+            securities |= {ccy + report_ccy + ' Curncy' for ccy in quote_currencies if ccy != report_ccy}
+        return {'securities': sorted(securities),
                 'unmapped_count': sum(p['kind'] == 'security' and not p.get('isin') for p in positions),
-                'snapshot_as_of': snapshot['as_of']}
+                'snapshot_as_of': snapshot['as_of'] if snapshot else None,
+                'mars_as_of': mars['as_of'] if mars else None}
 
     def ingest(self, device_id, state):
         if not isinstance(state, dict) or state.get('schema_version') != 1:

@@ -12,7 +12,8 @@ from .quotes import QuoteStore
 from .analytics import portfolio_analytics
 from .performance import PerformanceStore, calculate_performance, HEADERS as PERFORMANCE_HEADERS
 from .risk import RiskStore, derivatives_risk, HEADERS as RISK_HEADERS
-from .report import report_data, report_html, report_csv
+from .report import report_data, report_html, report_csv, mars_report_html, mars_report_csv
+from .mars import MarsStore, enrich_base_data
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,6 +38,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path=urlsplit(self.path).path
+        if path in {'/reports/mars','/api/reports/mars.html','/api/reports/mars.csv'}:
+            snapshot=MarsStore(self.store.path).latest() if self.store else None
+            snapshot=enrich_base_data(snapshot,self.quote_store.view() if self.quote_store else {'quotes':[]})
+            if not snapshot:
+                self.reply({'error':'Import a MARS workbook before exporting its report'},status=400)
+            elif path.endswith('.csv'):
+                self.reply(mars_report_csv(snapshot),'text/csv; charset=utf-8',filename='mars-trader-report.csv')
+            else:
+                self.reply(mars_report_html(snapshot),'text/html; charset=utf-8',filename='mars-trader-report.html' if path.endswith('.html') else None)
+            return
         if path in {'/api/templates/performance.csv','/api/templates/risk.csv'}:
             out=StringIO(); writer=csv.writer(out)
             writer.writerow(PERFORMANCE_HEADERS if 'performance' in path else RISK_HEADERS)
@@ -79,6 +90,8 @@ class Handler(BaseHTTPRequestHandler):
                 'performance': calculate_performance(PerformanceStore(self.store.path).events() if self.store else []),
                 'risk': derivatives_risk(snapshot,RiskStore(self.store.path).terms() if self.store else []),
                 'risk_inputs_count': len(RiskStore(self.store.path).terms()) if self.store else 0,
+                'mars': enrich_base_data(MarsStore(self.store.path).latest(),bloomberg) if self.store else None,
+                'mars_snapshot_count': MarsStore(self.store.path).count() if self.store else 0,
                 'bridge_tokens': self.quote_store.devices() if self.quote_store else [],
                 'ubs': f"Snapshot as of {snapshot['as_of']} · Not live" if snapshot else 'No snapshot imported',
                 'execution_enabled': False,
@@ -105,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
             self.bridge_post()
             return
         formats = {'/api/import/positions': 'ubs-positions', '/api/import/orders': 'ubs-orders',
-                   '/api/import/performance':'desk-performance','/api/import/risk':'desk-risk'}
+                   '/api/import/performance':'desk-performance','/api/import/risk':'desk-risk','/api/import/mars':'bloomberg-mars'}
         if self.path not in formats or not self.store:
             self.send_error(404)
             return
@@ -116,15 +129,23 @@ class Handler(BaseHTTPRequestHandler):
                 (origin is not None and origin != (self.public_origin or f'http://{host}'))):
             self.reply({'error': 'Import must originate from the local dashboard'}, status=403)
             return
-        if self.headers.get('Content-Type', '').split(';')[0] != 'text/csv':
-            self.reply({'error': 'Expected text/csv'}, status=415)
+        expected_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if self.path=='/api/import/mars' else 'text/csv'
+        if self.headers.get('Content-Type', '').split(';')[0] != expected_type:
+            self.reply({'error': 'Unexpected import content type'}, status=415)
             return
         try:
             length = int(self.headers.get('Content-Length', '0'))
             if not 0 < length <= 2 * 1024 * 1024:
-                self.reply({'error': 'CSV must be between 1 byte and 2 MiB'}, status=413)
+                self.reply({'error': 'Import must be between 1 byte and 2 MiB'}, status=413)
                 return
-            content = self.rfile.read(length).decode('utf-8-sig')
+            raw = self.rfile.read(length)
+            if self.path=='/api/import/mars':
+                metadata=self.headers.get('X-Mars-Metadata','{}')
+                if len(metadata)>2048: raise ValueError('MARS metadata too long')
+                result=MarsStore(self.store.path).import_content(raw,json.loads(metadata))
+                self.reply({key:result[key] for key in ['id','count','as_of','portfolio','already_imported']})
+                return
+            content = raw.decode('utf-8-sig')
             if self.path=='/api/import/performance':
                 result=PerformanceStore(self.store.path).import_content(content)
             elif self.path=='/api/import/risk':

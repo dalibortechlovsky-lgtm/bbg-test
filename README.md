@@ -340,3 +340,54 @@ locally built `bbg-frontoffice:deployment-test` validates authenticated HTTPS
 report downloads, scoped device access, persistence and backup restoration.
 The updater validates new features and retains existing performance/risk row
 counts without inserting synthetic records into a live account.
+
+## MARS base-data XLSX import
+
+The owner explicitly distrusts MARS currency calculations. `src/mars.py` reads
+static XLSX using only Python's standard library and **excludes** all MARS P/L,
+converted cost/market values, delta-notional, underlying forward prices and
+Greeks. Retained fields: ticker, source position display, portfolio, notional,
+strike, trade/expiry/delivery dates, market/cost quote and underlying identifier.
+Notional and prices retain their source units; no quantity/multiplier or currency
+conversion is inferred. Group labels are preserved, but summary amounts are
+excluded. Unindented instruments without an explicit hierarchy are ungrouped.
+
+`/api/import/mars` expects XLSX bytes, the XLSX MIME type,
+`X-Import-Format: bloomberg-mars`, and optional `X-Mars-Metadata` JSON containing
+`as_of`, `portfolio_currency`, `pnl_period`. The dashboard supplies these settings.
+Currency and P/L period are settings, not endorsement of calculated column
+values. Valuation dates are explicit; workbook save/creation timestamps are not
+used. The supplied P/L convention is year-to-date for positions held from the
+start of the year and from trade date for positions opened within the year.
+This does not supply missing fills or opening cost records.
+
+Archive size/expansion, cell count, dimensions and XML declarations are bounded;
+macros, external workbook links, formulas, base-data error/boolean cells, duplicate cells,
+duplicate instrument identities and mixed portfolios are rejected. Errors or nonnumeric values in excluded MARS calculation columns are ignored. No workbook
+code or attached instructions execute. Imported normalized snapshots are
+versioned and idempotent by workbook digest plus metadata/policy version. They
+stay in the ignored private SQLite database. No account records or source XLSX
+are committed or included in the source-only deployment image.
+
+The scoped watchlist includes exact MARS tickers in addition to UBS ISINs. The
+existing worker fetches PX_LAST, CRNCY and ID_ISIN using its existing flow.
+Independent quote enrichment matches exact ticker only, retains freshness and
+does not adopt MARS currency assumptions. Once actual quote currencies arrive,
+CCY/report-currency pairs are requested as well. Quote or ISIN availability is
+not proof of contract units, listing conventions or multiplier verification.
+Unsupported identifiers may yield partial snapshots; UBS imports remain
+independent. No trades, openings or modeled Greeks are automatically generated.
+
+Choose MARS base data in the report source selector. `/reports/mars` prints to
+PDF; `/api/reports/mars.html` and `/api/reports/mars.csv` download standalone
+reports. MARS calculated totals and P/L are excluded from all of these exports;
+independent received quotes are identified separately. The UBS/calculated
+performance report remains available. All report/upload routes are protected
+by Caddy owner authentication; bridge tokens only see the ticker watchlist and
+upload quote data. The updater checks MARS snapshot preservation as well as
+bank records, event ledgers and risk input counts.
+
+Verification: synthetic XLSX tests, actual uploaded workbook validation outside
+Git, browser XLSX-upload/report/PDF checks, and Docker HTTPS upload/export/scoped
+watchlist/backup/persistence checks. No new dependencies or runtime configuration
+are required.
