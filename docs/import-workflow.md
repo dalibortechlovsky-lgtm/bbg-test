@@ -1,9 +1,10 @@
-# Proposed owner import workflow — rollout paused
+# Simplified owner import workflow
 
-The owner requested a simpler workflow before rollout. Native UBS account activity
-and a combined positions/activity upload are implemented in development. Whole
-portfolio P/L, automatic folder upload and the PTD accounting integration remain
-incomplete; this version has not been deployed.
+One upload recognizes the year-end statement PDF, current UBS positions and
+account transaction CSVs. The dashboard shows portfolio P/L in CZK, native
+average-cost realized gains, asset/FX contributions, expiry risk and report export.
+Deploy the reviewed source with the protected updater; a saved environment draft
+does not install a release on the hosted server.
 
 ## Sources and scope
 
@@ -113,15 +114,22 @@ booked versus intraday snapshot cash difference. A filter end cannot be used as
 a certified booking-date cash close. Matching balances on different dates cannot
 establish coverage for the intervening days.
 
-Still needed from the owner: the 31 December 2025 positions/statement with carried
-quantities, native acquisition costs and year-start market values, plus account
-exports and a positions snapshot through the same current cutoff. Use a single
-declared cutoff for all accounts. Resolve only exceptional private contracts,
+The supplied 31 December 2025 statement now provides carried quantities, native
+historical costs, year-start values and cash/deposits. Its 24 records reconcile to
+the statement net assets. The supplied latest positions file is valued on
+14 October, although its filename/export date is 15 October. Supplied activity and
+owner-confirmed expiry/margin lifecycles reconcile all security quantities and
+cash/deposit balances to that close. Matching end balances alone do not prove
+complete transaction coverage: refreshed account exports through the same cutoff
+remain necessary. Resolve only exceptional private contracts,
 corporate actions or missing acquisition history from confirmations. The existing
 zero CHF snapshot does not establish that there was no CHF activity.
 
-The platform still needs independent historical closing prices/FX and a consistent
-accrual/settlement valuation convention. A live PX_LAST quote is not a historical
+The updated Windows worker requests the historical daily FX fixings needed for
+dated capital movements, carrying the prior close across non-trading days. Missing
+or conflicting fixings remain unavailable. Opening/closing accrued interest is
+included consistently. Pending trade receivables/payables currently block total
+P/L/NAV certification rather than being guessed. A live PX_LAST quote is not a historical
 close. These are system implementation requirements rather than recurring owner
 worksheets. Main report currency is CZK; native asset returns remain visible.
 
@@ -178,3 +186,44 @@ are required for their contributions. Missing coverage remains provisional.
 The routine owner workflow stays native exports, not attribution worksheets.
 Bloomberg supplies verified price/FX histories where available; missing private
 contract or opening-basis inputs are resolved once from their source documents.
+
+## Implemented accounting and deployment limits
+
+Native asset performance is closing dirty value less year-start dirty value plus
+recorded execution cash and income. Fees already included in UBS net settlement
+cash are not subtracted again. Cash/deposit residuals include account interest,
+fees and unallocated postings; they are not relabeled deposit income alone.
+Historical-cost realized gains remain separate from YTD market-value gains.
+Statement-only carried costs may omit original acquisition fees; every row retains
+its cost source. Same-day opposing fills without sequencing and unmatched
+reversals are excluded pending review. Expiry/margin lifecycle confirmations clear
+residual quantities without inventing individual payoff allocations; related cash
+is grouped with derivative settlements. Unallocated OTC payments and unconfirmed
+bank payment boundaries keep the portfolio provisional.
+
+Matched FX conversions are internal. The difference between the two native
+execution amounts translated at the dated fixing is included once in the
+receiving currency contribution; it is never removed as external funding.
+Consecutive closing snapshots produce daily P/L; longer gaps produce period P/L.
+Current quotes never silently replace the dated UBS accounting close.
+
+The owner can select existing native files again after rollout; no event worksheet,
+PTD or MARS export is required for routine covered UBS activity. PDF parsing uses
+Poppler and rejects incomplete tables or a different portfolio. Whole batches are
+atomic and overlapping imports are idempotent. Changed year-end costs or economic
+cash components require correction review.
+
+The updater preserves the login, `.env` and Docker volumes, takes a consistent
+SQLite/source backup, verifies retained source counts and device scopes, and
+exposes the installed commit through the `X-App-Release` health response header.
+Private owner settlement confirmations can be passed in `BBG_SETTLEMENTS_B64`
+(base64 JSON) during the root-console update; identifiers never enter public
+source. A new worker download/restart is required to enable historical FX requests;
+existing quote credentials stay unchanged.
+
+The Reconciliation panel includes one-time cash decision controls. Confirm bank
+payments as external funding only after checking the portfolio boundary. OTC cash
+can be assigned to asset performance or FX hedging; hedge cash moves between the
+two contributions without changing total P/L. Decisions are saved with timestamps
+in an append-only audit history; changing a decision preserves the earlier version.
+Unknown boundaries and missing settlement liabilities withhold headline totals.

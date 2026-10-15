@@ -53,6 +53,51 @@ def request_quotes(securities):
         session.stop()
 
 
+def request_history(requests):
+    """Read daily FX fixings for requested dates; no account information needed."""
+    import blpapi
+    if not isinstance(requests,list) or len(requests)>10:raise ValueError('Invalid historical FX request list')
+    wanted={r['security']:set(r['dates']) for r in requests}
+    if not wanted:return []
+    from datetime import date
+    import re
+    for security,days in wanted.items():
+        if not re.fullmatch('[A-Z]{3}CZK Curncy',security) or not 1<=len(days)<=500:raise ValueError('Invalid historical FX security or dates')
+        for day in days:
+            if date.fromisoformat(day).isoformat()!=day:raise ValueError('Invalid history date')
+    options=blpapi.SessionOptions();options.setServerHost('localhost');options.setServerPort(8194)
+    session=blpapi.Session(options)
+    try:
+        if not session.start() or not session.openService('//blp/refdata'):raise RuntimeError('Bloomberg historical service unavailable')
+        request=session.getService('//blp/refdata').createRequest('HistoricalDataRequest')
+        for security in wanted:request.getElement('securities').appendValue(security)
+        request.getElement('fields').appendValue('PX_LAST')
+        days=[day for values in wanted.values() for day in values]
+        request.set('startDate',min(days).replace('-',''));request.set('endDate',max(days).replace('-',''))
+        request.set('periodicitySelection','DAILY')
+        request.set('nonTradingDayFillOption','ALL_CALENDAR_DAYS')
+        request.set('nonTradingDayFillMethod','PREVIOUS_VALUE')
+        session.sendRequest(request);result=[];deadline=time.monotonic()+30
+        while time.monotonic()<deadline:
+            event=session.nextEvent(1000)
+            for message in event:
+                if message.hasElement('responseError') or message.messageType()==blpapi.Name('RequestFailure'):
+                    raise RuntimeError('Bloomberg rejected historical FX request')
+                if not message.hasElement('securityData'):continue
+                row=message.getElement('securityData').toPy()
+                security=row.get('security')
+                if security not in wanted or row.get('securityError'):continue
+                for field in row.get('fieldData',[]):
+                    day=str(field.get('date'))[:10]
+                    if day not in wanted[security]:continue
+                    try:value=Decimal(str(field.get('PX_LAST')))
+                    except (InvalidOperation,ValueError,TypeError):continue
+                    if value.is_finite() and value>0:result.append({'security':security,'date':day,'price':str(value)})
+            if event.eventType()==blpapi.Event.RESPONSE:return result
+        raise TimeoutError('Bloomberg historical FX timed out')
+    finally:session.stop()
+
+
 def cycle(state, securities, fetch=request_quotes, now=utc_now):
     """Retain last good quotes on failure; never relabel them as newly received."""
     updated = dict(state, checked_at=now())
@@ -101,6 +146,8 @@ def load_config(path):
             raise ValueError('Bridge configuration must use HTTPS URLs without embedded credentials')
     if urls[0].netloc != urls[1].netloc:
         raise ValueError('Watchlist and upload must use the same host')
+    if urls[0].path!='/api/bridge/quotes' or urls[1].path!='/api/bridge/watchlist':
+        raise ValueError('Use the dashboard-generated bridge endpoint paths')
     token = config.get('token')
     if not isinstance(token, str) or not token.startswith('bbg_') or not 20 <= len(token) <= 256:
         raise ValueError('Invalid bridge token configuration')
@@ -152,6 +199,18 @@ def main():
                         raise ValueError('Invalid watchlist')
                     securities = candidates
                     print('Watchlist:', len(securities), 'securities;', watchlist.get('unmapped_count', 0), 'holdings need mapping', flush=True)
+                    history=watchlist.get('history_requests',[])
+                    if history:
+                        try:
+                            quotes=request_history(history)
+                            if quotes:
+                                history_config=dict(config,history_endpoint=config['endpoint'].removesuffix('/quotes')+'/history')
+                                accepted=existing=0
+                                for offset in range(0,len(quotes),500):
+                                    result=cloud_request(history_config,'history_endpoint',{'quotes':quotes[offset:offset+500]})
+                                    accepted+=result['accepted'];existing+=result['existing']
+                                print('Historical FX:',accepted,'new fixings;',existing,'already stored',flush=True)
+                        except Exception as exc:print('Historical FX pending:',type(exc).__name__,flush=True)
                 except urllib.error.HTTPError as exc:
                     print('Watchlist HTTP', exc.code, flush=True)
                 except Exception as exc:

@@ -101,7 +101,10 @@ class QuoteStore:
             report_ccy=mars['portfolio_currency']
             quote_currencies={q['currency'] for q in self.view()['quotes'] if q['security'] in mars_tickers and q.get('currency')}
             securities |= {ccy + report_ccy + ' Curncy' for ccy in quote_currencies if ccy != report_ccy}
+        from .accounting import accounting_view
+        accounting=accounting_view(self.path,snapshot)
         return {'securities': sorted(securities),
+                'history_requests':accounting.get('history_requests',[]) if accounting else [],
                 'unmapped_count': sum(p['kind'] == 'security' and not p.get('isin') for p in positions),
                 'snapshot_as_of': snapshot['as_of'] if snapshot else None,
                 'mars_as_of': mars['as_of'] if mars else None}

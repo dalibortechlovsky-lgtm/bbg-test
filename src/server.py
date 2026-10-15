@@ -16,8 +16,21 @@ from .report import report_data, report_html, report_csv, mars_report_html, mars
 from .mars import MarsStore, enrich_base_data
 from .ptd import PtdStore
 from .ubs_activity import ActivityStore, activity_csv
+from .accounting import accounting_view
+from .baseline import BaselineStore
+from .snapshot_risk import snapshot_risk
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def accounting_source_counts(path):
+    import sqlite3
+    counts={}
+    with sqlite3.connect(path) as db:
+        for table in ['opening_baselines','fx_history','settlement_confirmations','cash_reviews']:
+            exists=db.execute('SELECT 1 FROM sqlite_master WHERE name=?',(table,)).fetchone()
+            counts[table]=db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0] if exists else 0
+    return counts
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -37,10 +50,10 @@ class Handler(BaseHTTPRequestHandler):
             ptd['accounting_status']='Independent audit source; execution versus opening-mark classification must be verified before accounting'
             performance['warnings'].append('PTD is retained as an independent cross-check; its booked trades and year-start resets are not applied to the accounting ledger.')
         if activity:
-            performance['source']='Explicit performance ledger only; UBS activity is staged for reconciliation'
+            performance['source']='Manual performance ledger only; automatic UBS accounting is separate'
             performance['portfolio_pnl_verified']=False
             performance['warnings']+=activity['warnings']
-            performance['warnings'].append('UBS activity and PTD records are not yet applied to performance totals; opening inventory and valuation reconciliation are required.')
+            performance['warnings'].append('These manual ledger totals are independent of the main UBS accounting. PTD year-start resets are never added as executions.')
         return performance,ptd,activity
 
     def reply(self, data, content_type='application/json', status=200, filename=None):
@@ -51,6 +64,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(data)))
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('X-App-Release',os.environ.get('APP_RELEASE','development'))
         if filename:
             self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
         self.end_headers()
@@ -91,6 +105,8 @@ class Handler(BaseHTTPRequestHandler):
                     query.get('size_currency',['EUR'])[0],query.get('pnl_currency',['CZK'])[0])
                 data['ptd']=ptd
                 data['activity']=activity
+                data['accounting']=accounting_view(self.store.path,snapshot) if self.store else None
+                data['snapshot_risk']=snapshot_risk(snapshot)
                 if path.endswith('.csv'):
                     self.reply(report_csv(data),'text/csv; charset=utf-8',filename='trader-report-'+data['date']+'.csv')
                 else:
@@ -111,6 +127,7 @@ class Handler(BaseHTTPRequestHandler):
             positions = [] if snapshot is None else [
                 {key: value for key, value in row.items() if key != 'raw'} for row in snapshot['positions']]
             performance,ptd,activity=self.performance_state(snapshot,bloomberg)
+            baseline=BaselineStore(self.store.path).latest(snapshot['as_of']) if self.store and snapshot else None
             self.reply({
                 'mode': 'development',
                 'asset_classes': ['Equities', 'Equity derivatives', 'Bonds', 'FX'],
@@ -120,6 +137,10 @@ class Handler(BaseHTTPRequestHandler):
                 'performance': performance,
                 'ptd':ptd,
                 'activity':activity,
+                'accounting':accounting_view(self.store.path,snapshot) if self.store else None,
+                'snapshot_risk':snapshot_risk(snapshot),
+                'baseline':{k:v for k,v in baseline.items() if k!='positions'} if baseline else None,
+                'accounting_source_counts':accounting_source_counts(self.store.path) if self.store else {},
                 'manual_performance_event_count':len(PerformanceStore(self.store.path).events()) if self.store else 0,
                 'risk': derivatives_risk(snapshot,RiskStore(self.store.path).terms() if self.store else []),
                 'risk_inputs_count': len(RiskStore(self.store.path).terms()) if self.store else 0,
@@ -147,6 +168,25 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def do_POST(self):
+        if self.path=='/api/accounting/cash-review' and self.store:
+            expected=self.public_origin or 'http://'+self.headers.get('Host','')
+            if self.headers.get('X-Accounting-Action')!='manage' or (self.headers.get('Origin') is not None and self.headers.get('Origin')!=expected):
+                self.reply({'error':'Use owner accounting controls'},status=403);return
+            try:
+                from .cash_review import CashReviewStore
+                activity=ActivityStore(self.store.path).view()
+                self.reply(CashReviewStore(self.store.path).record(self.read_json(),(activity or {}).get('ledger',[])))
+            except (ValueError,UnicodeError) as exc:self.reply({'error':str(exc)},status=400)
+            return
+        if self.path=='/api/accounting/settlements' and self.store:
+            expected=self.public_origin or 'http://'+self.headers.get('Host','')
+            if self.headers.get('X-Accounting-Action')!='manage' or (self.headers.get('Origin') is not None and self.headers.get('Origin')!=expected):
+                self.reply({'error':'Use owner accounting controls'},status=403);return
+            try:
+                from .lifecycle import LifecycleStore
+                self.reply(LifecycleStore(self.store.path).confirm(self.read_json()))
+            except (ValueError,UnicodeError) as exc:self.reply({'error':str(exc)},status=400)
+            return
         if self.path == '/api/import/ubs' and self.store:
             expected=self.public_origin or 'http://'+self.headers.get('Host','')
             if self.headers.get('X-Import-Format')!='ubs-batch' or (self.headers.get('Origin') is not None and self.headers.get('Origin')!=expected):
@@ -237,6 +277,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def bridge_post(self):
         try:
+            if self.path=='/api/bridge/history':
+                device=self.quote_store.authenticate(self.headers.get('Authorization'))
+                if not device:
+                    self.reply({'error':'Valid bridge token required'},status=401);return
+                if self.headers.get('Origin') is not None:
+                    self.reply({'error':'Historical uploads are for the Windows worker'},status=403);return
+                from .history import HistoryStore
+                data=accounting_view(self.store.path)
+                self.reply(HistoryStore(self.store.path).ingest(self.read_json(),data.get('history_requests',[]) if data else [],device,self.quote_store.now()))
+                return
             if self.path == '/api/bridge/quotes':
                 device = self.quote_store.authenticate(self.headers.get('Authorization'))
                 if not device:

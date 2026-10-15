@@ -5,6 +5,7 @@ Trade, booking and value dates remain distinct; export closing balances can
 include postings booked after the export's transaction-date filter.
 """
 import csv
+import base64
 import hashlib
 import json
 import re
@@ -219,6 +220,12 @@ class ActivityStore:
             raise ValueError('Select between one and twelve UBS CSV files')
         parsed = []
         for content in contents:
+            if isinstance(content,dict) and set(content)=={'pdf_base64'}:
+                from .baseline import parse_statement
+                try: raw=base64.b64decode(content['pdf_base64'],validate=True)
+                except (ValueError,TypeError): raise ValueError('Invalid PDF encoding') from None
+                parsed.append(('baseline',(parse_statement(raw),raw)))
+                continue
             if not isinstance(content, str) or not 0 < len(content.encode()) <= 2 * 1024 * 1024:
                 raise ValueError('Each UBS file must be between one byte and 2 MiB')
             if content.lstrip('\ufeff \r\n').startswith('Account number:;'):
@@ -234,9 +241,17 @@ class ActivityStore:
                 CREATE TABLE IF NOT EXISTS ubs_activity_records (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS ubs_activity_exports (id TEXT PRIMARY KEY, imported_at TEXT NOT NULL, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS snapshots (id TEXT PRIMARY KEY, as_of TEXT NOT NULL, exported_at TEXT NOT NULL, payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS opening_baselines (id TEXT PRIMARY KEY,as_of TEXT NOT NULL,payload TEXT NOT NULL,source_pdf BLOB NOT NULL);
             ''')
             db.execute('BEGIN IMMEDIATE')
             for kind, item in parsed:
+                if kind=='baseline':
+                    data,raw=item
+                    from .baseline import validate_baseline
+                    validate_baseline(db,data)
+                    cursor=db.execute('INSERT OR IGNORE INTO opening_baselines VALUES (?,?,?,?)',(data['id'],data['as_of'],json.dumps(data),raw))
+                    results.append({'format':'baseline','count':len(data['positions']),'as_of':data['as_of'],'already_imported':cursor.rowcount==0})
+                    continue
                 if kind == 'positions':
                     cursor = db.execute('INSERT OR IGNORE INTO snapshots VALUES (?, ?, ?, ?)',
                                         (item['id'], item['as_of'], item['exported_at'], json.dumps(item)))
@@ -260,6 +275,10 @@ class ActivityStore:
                                 'from': item['from'], 'until': item['until'],
                                 'closing_balance': item['closing_balance'], 'balance_chain': item['balance_chain'],
                                 'already_imported': cursor.rowcount == 0})
+            from .baseline import portfolio_identity
+            portfolios={portfolio_identity(json.loads(r[0])['portfolio']) for r in db.execute('SELECT payload FROM snapshots')}
+            portfolios.update(portfolio_identity(json.loads(r[0])['portfolio']) for r in db.execute('SELECT payload FROM opening_baselines'))
+            if len(portfolios)>1:raise ValueError('UBS opening statement and positions must belong to one portfolio; batch rejected')
         return {'files': results, 'status': 'Imported for reconciliation; whole-portfolio P/L remains unverified'}
 
     def state(self):
@@ -285,7 +304,8 @@ class ActivityStore:
         source_rows = {r['id']: r for e in exports for r in e['rows']}
         # Additional instrument references are reparsed from retained source
         # exports. They are reference data, not automatic risk/accounting terms.
-        records = [r | {k: v for k, v in terms(source_rows[r['id']]['raw']).items() if k in REFERENCE_FIELDS}
+        records = [r | {'counterparty_reference':source_rows[r['id']]['raw']['Description3'][:4096]} |
+                   {k: v for k, v in terms(source_rows[r['id']]['raw']).items() if k in REFERENCE_FIELDS}
                    for r in records]
         latest = {}
         for e in exports:
@@ -317,6 +337,8 @@ class ActivityStore:
             accounts.append({k: e[k] for k in ['account', 'account_number', 'currency', 'from', 'until', 'count',
                                              'opening_balance', 'closing_balance', 'balance_chain', 'date_filter']} |
                             {'booked_beyond_filter_count': len(beyond), 'snapshot_match': match,
+                             'coverage_intervals': sorted({(x['from'],x['until']) for x in exports
+                                                          if (x['account'],x['currency'])==(e['account'],e['currency'])}),
                              'coverage_status': 'Transaction-date filter; not a certified booking-date cutoff'})
         pairs, grouped, totals, review, principal = [], defaultdict(list), defaultdict(lambda: defaultdict(Decimal)), [], defaultdict(Decimal)
         for r in records:

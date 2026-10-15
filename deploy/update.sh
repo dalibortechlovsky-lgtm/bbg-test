@@ -14,6 +14,7 @@ backup=/opt/bbg-backups/$stamp
 install -d -m 0700 "$backup"
 tmp=$(mktemp -d /opt/.bbg-update.XXXXXX)
 changed=0
+prior_release=development
 rollback() {
     trap - ERR
     if [[ "$changed" == 1 ]]; then
@@ -21,7 +22,7 @@ rollback() {
         rm -rf "$app/src" "$app/web" "$app/bridge"
         tar -xzf "$backup/source.tar.gz" -C "$app"
         cd "$app/deploy"
-        docker compose --env-file .env up -d --build --wait --wait-timeout 180 || true
+        BBG_RELEASE_SHA="$prior_release" docker compose --env-file .env up -d --build --wait --wait-timeout 180 || true
         docker compose --env-file .env exec -T proxy caddy reload --config /etc/caddy/Caddyfile || true
     fi
     echo "Preserved backups: $backup"
@@ -51,8 +52,11 @@ Path(sys.argv[1]).write_text(json.dumps({'positions':len(state['positions']),'tr
                                       'ptd_records':(state.get('ptd') or {}).get('stored_record_count',0),
                                       'ptd_corrections':len((state.get('ptd') or {}).get('corrections',[])),
                                       'risk_inputs':state.get('risk_inputs_count',0),
-                                      'mars_snapshots':state.get('mars_snapshot_count',0)}))
+                                      'mars_snapshots':state.get('mars_snapshot_count',0),
+                                      'accounting_sources':state.get('accounting_source_counts',{})}))
 PY
+prior_release=$(curl --proto '=https' --tlsv1.2 -fsS -D - -o /dev/null --max-time 15 "$(python3 -c "import json; print(json.load(open('/root/bbg-dashboard-login.json'))['url'])")/health" | awk 'tolower($1)=="x-app-release:" {gsub("\r", "", $2); print $2}')
+prior_release=${prior_release:-development}
 container=$(docker compose --env-file .env ps -q app)
 docker compose --env-file .env exec -T app python -m src.backup /data/frontoffice.sqlite3 "/data/backups/update-$stamp.sqlite3"
 docker cp "$container:/data/backups/update-$stamp.sqlite3" "$backup/database.sqlite3"
@@ -69,8 +73,9 @@ cp "$release/deploy/compose.yaml" "$release/deploy/Caddyfile" "$app/deploy/"
 docker compose --env-file .env config --quiet
 docker compose --env-file .env up -d --build --wait --wait-timeout 180
 docker compose --env-file .env exec -T proxy caddy reload --config /etc/caddy/Caddyfile
+docker compose --env-file .env exec -T app python -c "import shutil; assert shutil.which('pdftotext'), 'PDF extractor unavailable'"
 python3 - "$backup/before.json" "$BBG_RELEASE_SHA" <<'PY'
-import base64,json,sys,time,urllib.request,urllib.error
+import base64,json,os,sys,time,urllib.request,urllib.error
 from pathlib import Path
 login=json.loads(Path('/root/bbg-dashboard-login.json').read_text())
 auth='Basic '+base64.b64encode((login['username']+':'+login['password']).encode()).decode()
@@ -99,7 +104,11 @@ for attempt in range(20):
         assert state['mars_snapshot_count']==before['mars_snapshots']
         if state.get('mars'):
             assert state['mars']['calculation_policy']=='base_data_only'
-        assert 'risk' in state
+        assert 'risk' in state and 'accounting' in state and 'snapshot_risk' in state
+        for key,value in before['accounting_sources'].items():
+            assert state['accounting_source_counts'][key]>=value
+        with urllib.request.urlopen(base+'/health',timeout=15) as response:
+            assert response.headers.get('X-App-Release')==sys.argv[2]
         if state.get('snapshot'):
             from decimal import Decimal
             analytics=state['analytics']
@@ -110,9 +119,15 @@ for attempt in range(20):
     except Exception:
         time.sleep(3)
 else: raise RuntimeError('Updated dashboard readiness or data-preservation check failed')
+# Apply private owner confirmations supplied with this invocation, never in public source.
+confirmation=os.environ.get('BBG_SETTLEMENTS_B64')
+if confirmation:
+    rows=json.loads(base64.b64decode(confirmation,validate=True))
+    assert request('/api/accounting/settlements',rows,{'Authorization':auth,'Content-Type':'application/json',
+        'X-Accounting-Action':'manage','Origin':base})['confirmed']==len(rows)
 # Verify report downloads without importing any synthetic trading data.
 if state.get('snapshot'):
-    for path,expected in [('/api/reports/trader.html',b'Trading Overview'),('/api/reports/trader.csv',b'section,date')]:
+    for path,expected in [('/api/reports/trader.html',b'Trading Overview'),('/api/reports/trader.csv',b'section,')]:
         with urllib.request.urlopen(urllib.request.Request(base+path,headers={'Authorization':auth}),timeout=15) as r:
             assert r.status==200 and expected in r.read()
 if state.get('mars'):
@@ -125,6 +140,7 @@ headers={'Authorization':'Bearer '+device['config']['token'],'Content-Type':'app
 try:
     assert request('/api/bridge/watchlist',headers=headers)['securities']
     assert request('/api/bridge/quotes',{'schema_version':1,'status':'starting','quotes':[]},headers)['accepted']==0
+    assert request('/api/bridge/history',{'quotes':[]},headers)['accepted']==0
     try:
         request('/api/status',headers=headers)
     except urllib.error.HTTPError as exc:

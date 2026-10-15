@@ -8,6 +8,9 @@
     handle /api/bridge/watchlist {
         reverse_proxy app:8000
     }
+    handle /api/bridge/history {
+        reverse_proxy app:8000
+    }
     handle {
         basic_auth {
             {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}

@@ -1,24 +1,23 @@
 # Front Office Trade Control
 
-## UBS transaction workflow in development
+The simplified desk uses native UBS files for whole-portfolio accounting in CZK.
+One upload accepts the prior year-end statement PDF, current positions CSV and
+currency account transaction CSVs. It reconstructs average-cost realized gains,
+separates asset and currency contributions, checks security/cash/deposit balances,
+and exports an A4 Trading Overview with matching reconciliation status.
 
-The combined **Import UBS data** control accepts a positions CSV and the native
-account transaction CSVs together. The supplied format uses one account file per
-currency. The complete selection is validated atomically; overlapping records
-are deduplicated and changed economic transaction components require review.
-Exports retain their source rows and running cash-balance proofs. Trade, booking
-and value dates, reversals, payment/fee components, deposit principal, option
-Valor references and matched FX legs remain distinct.
+The Bloomberg Windows worker supplies current prices and requested historical FX
+fixings. MARS is base reference data only; PTD remains an audit source. Year-start
+market marks never replace original acquisition cost or become new purchases.
+Long vanilla option expiry scenarios use corroborated UBS terms; model Greeks
+still require independently verified inputs. Pending settlements, incomplete
+cash coverage, unconfirmed transfer boundaries and OTC allocation prevent a
+verified P/L label. This source release is not evidence of installation on the
+hosted server. See [the owner workflow](docs/import-workflow.md).
 
-The activity reconciliation and CSV export are available in the development
-dashboard. Account activity and PTD are not automatically posted into performance
-totals. Whole-portfolio daily/YTD P/L and asset/FX attribution still require the
-opening inventory/costs, year-start and closing marks, historical FX, settlement
-coverage and external-flow classification. This revision is **not deployed**;
-rollout remains paused at the owner's request. See [the import workflow](docs/import-workflow.md).
-
+Development requires Python 3.12+ and `pdftotext` (Poppler). Application code uses
+the Python standard library. The Dockerfile installs the PDF extractor.
 Validate with `python -m unittest discover -s tests -p 'test_*.py' -v`.
-The app remains standard-library-only; no new installation step is needed.
 
 Initial control-layer prototype for the workflow:
 
@@ -37,7 +36,7 @@ Initial control-layer prototype for the workflow:
 - UBS positions and cash snapshot importer with persistent storage
 - Position reconciliation scaffold
 
-External Bloomberg/UBS connectivity is intentionally behind adapters until real schemas/API access are available.
+UBS accounting uses native exports. Bloomberg market data arrives through the scoped outbound Windows worker; automated order execution remains disabled.
 
 ## Development dashboard
 
@@ -49,11 +48,7 @@ python -m src.server --port 8000
 python -m unittest discover -s tests -p 'test_server.py' -v
 ```
 
-The dashboard binds to loopback and displays the latest imported UBS holdings and
-cash snapshot. It supports positions and KeyTrader order CSV upload, group filtering, a persistent
-trade blotter, and an import review history. It does
-not calculate live multi-asset P&L or risk, submit orders, or expose a remotely
-accessible service. The existing ledger remains a prototype.
+The standalone development server binds to loopback. The desk supports native UBS accounting, scoped Bloomberg data, positions/cash reconciliation and report exports. Advanced tools retain the order blotter, independent manual ledger and verified-input risk models. Production access requires the authenticated Caddy deployment; the Python server must remain private. Order execution is disabled.
 
 ## Windows Bloomberg probe
 
@@ -79,8 +74,7 @@ Individual fills, broker corrections, and other export formats remain unsupporte
 For options, futures, and bonds, valuation also requires contract multipliers,
 expiry/strike, quote conventions, accrued interest, and currency conversion.
 Remote phone access and ChatGPT tools still require a hosted authenticated service,
-a secured outbound Windows bridge, and Bloomberg-approved data usage. None of
-those connections are active in this prototype.
+a secured outbound Windows bridge, and Bloomberg-approved data usage. The hosted deployment uses authenticated HTTPS and an outbound quote-only Windows worker; local tests do not establish the current Windows or production connection state.
 
 
 ## KeyTrader order-enquiry import

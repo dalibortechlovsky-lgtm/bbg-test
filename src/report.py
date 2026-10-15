@@ -14,7 +14,11 @@ def fx_rate(snapshot,source,target):
         d=Decimal(value)
         if d<=0: continue
         graph.setdefault(a,{})[b]=d
-        graph.setdefault(b,{})[a]=1/d
+    # Preserve explicitly supplied directions rather than overwrite a published
+    # fixing with the reciprocal of another, rounded direction.
+    for pair,value in snapshot.get('exchange_rates',{}).items():
+        a,b=pair.split('/');d=Decimal(value)
+        if d>0: graph.setdefault(b,{}).setdefault(a,1/d)
     queue=[(source,Decimal(1))]; seen={source}
     for a,rate in queue:
         for b,d in graph.get(a,{}).items():
@@ -75,6 +79,9 @@ def spreadsheet(value):
 
 
 def report_csv(data):
+    if (data.get('accounting') or {}).get('opening_as_of'):
+        from .desk_report import desk_csv
+        return desk_csv(data)
     out=StringIO(); writer=csv.writer(out)
     writer.writerow(['section','date','description','identifier','native_currency','quantity','broker_price','price_convention',
                      'size_'+data['size_currency'],'snapshot_unrealized_'+data['pnl_currency'],'realized_native','income_native','notes'])
@@ -96,6 +103,9 @@ def report_csv(data):
 
 
 def report_html(data):
+    if (data.get('accounting') or {}).get('opening_as_of'):
+        from .desk_report import desk_html
+        return desk_html(data)
     e=lambda v:escape(str(v),quote=True)
     def number(v,color=True):
         cls='missing' if v is None else (('negative' if Decimal(v)<0 else 'positive') if color else '')

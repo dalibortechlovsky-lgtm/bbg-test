@@ -100,3 +100,11 @@ access, not bank accounts, CSV import, token management or order submission. The
 dashboard marks stale quotes or silent/disconnected devices after 90 seconds.
 Receipt timestamps are not exchange trade timestamps; a fresh request can return
 an unchanged or prior-session last price.
+
+
+The current dashboard watchlist can also request historical daily CZK FX fixings.
+The worker uses `HistoricalDataRequest`, `PX_LAST`, all calendar days and previous
+values on non-trading days, then uploads only requested currency/date/price rows
+to `/api/bridge/history`. Missing or conflicting fixings remain pending. Replace
+the worker file and restart it with the existing private configuration to enable
+this feature. Local SDK contract tests do not prove Windows entitlements.

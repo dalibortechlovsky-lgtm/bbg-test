@@ -54,6 +54,7 @@ try:
         from test_performance import event, csv_events
         from test_mars import workbook
         from test_ubs_activity import account_csv, posting
+        from test_accounting import pdf_document,STATEMENT
         import base64
         client='''
 import base64,json,ssl,time
@@ -77,6 +78,8 @@ with opener.open(Request(url,headers={'Authorization':auth}),timeout=5) as r:
  s=json.load(r)
 assert s['execution_enabled'] is False
 assert s['positions']==[] and s['trades']==[]
+with opener.open('https://dashboard.test/health',timeout=5) as response:
+ assert response.headers.get('X-App-Release')=='release-test'
 print('HTTPS certificate trusted, anonymous access rejected, authenticated dashboard verified')
 headers={'Authorization':auth,'Content-Type':'text/csv','X-Import-Format':'ubs-orders','Origin':'https://dashboard.test'}
 with opener.open(Request('https://dashboard.test/api/import/orders', data=__ORDER_CONTENT__.encode(), headers=headers),timeout=5) as r:
@@ -107,6 +110,12 @@ from datetime import datetime,timezone
 payload={'schema_version':1,'status':'connected','quotes':[{'security':'IBM US Equity','fieldData':{'PX_LAST':'123.45','CRNCY':'USD'},'observed_at':datetime.now(timezone.utc).isoformat()}]}
 assert cloud_request(config,'endpoint',payload)['accepted']==1
 assert cloud_request(config,'endpoint',payload)['ignored']==1
+history_config=config|{'history_endpoint':'https://dashboard.test/api/bridge/history'}
+assert cloud_request(history_config,'history_endpoint',{'quotes':[]})['accepted']==0
+for route in ['/api/accounting/settlements','/api/accounting/cash-review','/api/import/ubs']:
+ try:opener.open(Request('https://dashboard.test'+route,data=b'[]',headers={'Authorization':'Bearer '+config['token'],'Content-Type':'application/json'}),timeout=5)
+ except HTTPError as error:assert error.code==401
+ else:raise AssertionError('Device accessed accounting management')
 try:
  opener.open(Request(url,headers={'Authorization':'Bearer '+config['token']}),timeout=5)
 except HTTPError as e: assert e.code==401
@@ -184,14 +193,32 @@ except HTTPError as e: assert e.code==403
 else: raise AssertionError('Foreign origin imported UBS batch')
 with opener.open(Request('https://dashboard.test/api/reports/ubs-activity.csv',headers={'Authorization':auth}),timeout=5) as r:
  assert b'POSTING' in r.read()
-print('Protected UBS activity import, idempotency, review export and token scope verified')
+pdf_body=json.dumps({'files':[{'pdf_base64':__BASELINE_CONTENT__}]}).encode()
+with opener.open(Request('https://dashboard.test/api/import/ubs',data=pdf_body,headers=ubs_headers),timeout=5) as response:
+ assert json.load(response)['files'][0]['count']==2
+with opener.open(Request('https://dashboard.test/api/import/ubs',data=pdf_body,headers=ubs_headers),timeout=5) as response:
+ assert json.load(response)['files'][0]['already_imported']
+settlement=[{'key':'US0000000002','currency':'USD','settled_by':'2026-10-08','reason':'Synthetic owner confirmation: expiry or margin settlement'}]
+with opener.open(Request('https://dashboard.test/api/accounting/settlements',data=json.dumps(settlement).encode(),
+ headers=manage|{'X-Accounting-Action':'manage'}),timeout=5) as response:
+ assert json.load(response)['confirmed']==1
+with opener.open(Request(url,headers={'Authorization':auth}),timeout=5) as response:
+ state=json.load(response)
+assert state['accounting_source_counts']['opening_baselines']==1
+assert state['accounting_source_counts']['settlement_confirmations']==1
+assert state['accounting']['portfolio_pnl_verified'] is False
+for route,content in [('/api/reports/trader.csv',b'CURRENCY'),('/api/reports/trader.html',b'currency contribution')]:
+ with opener.open(Request('https://dashboard.test'+route,headers={'Authorization':auth}),timeout=5) as response:
+  assert content in response.read()
+print('Protected UBS/PDF import, retained opening data, provisional accounting, owner lifecycle, history scope and report exports verified')
 
 
 
 '''
+        client=client.replace('__BASELINE_CONTENT__',json.dumps(base64.b64encode(pdf_document(STATEMENT)).decode()))
         client=client.replace('__ORDER_CONTENT__',json.dumps(export()))
         client=client.replace('__MARS_CONTENT__',json.dumps(base64.b64encode(workbook()).decode()))
-        client=client.replace('__POSITIONS_CONTENT__',json.dumps(sample()))
+        client=client.replace('__POSITIONS_CONTENT__',json.dumps(sample().replace('TEST_PORTFOLIO','123-456-01')))
         client=client.replace('__UBS_ACTIVITY_CONTENT__',json.dumps(account_csv([
             posting('-100'),posting('-5','Third-Party Charges','TRADE1')])))
         client=client.replace('__PERFORMANCE_CONTENT__',json.dumps(csv_events([
@@ -206,10 +233,10 @@ print('Protected UBS activity import, idempotency, review export and token scope
         persist="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); r=s.import_orders_content("+input_data+"); assert r['added']==1; print('Non-root database write verified')"
         print(run(['docker','exec',app,'python','-c',persist]))
         print(run(['docker','exec',app,'python','-m','src.backup','/data/frontoffice.sqlite3','/data/backups/smoke.sqlite3']))
-        restored="from pathlib import Path; from src.storage import SnapshotStore; assert len(SnapshotStore('/data/backups/smoke.sqlite3').orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(Path('/data/backups/smoke.sqlite3')).events())==2; from src.mars import MarsStore; assert MarsStore(Path('/data/backups/smoke.sqlite3')).latest()['count']==2; from src.ubs_activity import ActivityStore; assert ActivityStore('/data/backups/smoke.sqlite3').view()['record_count']==2; print('Backup restoration verified')"
+        restored="from pathlib import Path; from src.storage import SnapshotStore; assert len(SnapshotStore('/data/backups/smoke.sqlite3').orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(Path('/data/backups/smoke.sqlite3')).events())==2; from src.mars import MarsStore; assert MarsStore(Path('/data/backups/smoke.sqlite3')).latest()['count']==2; from src.ubs_activity import ActivityStore; assert ActivityStore('/data/backups/smoke.sqlite3').view()['record_count']==2; from src.baseline import BaselineStore; assert len(BaselineStore('/data/backups/smoke.sqlite3').latest()['positions'])==2; from src.lifecycle import LifecycleStore; assert len(LifecycleStore('/data/backups/smoke.sqlite3').all())==1; print('Backup restoration verified')"
         print(run(['docker','exec',app,'python','-c',restored]))
         run(['docker','restart',app])
-        retained="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); assert len(s.orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(s.path).events())==2; from src.mars import MarsStore; assert MarsStore(s.path).latest()['count']==2; from src.ubs_activity import ActivityStore; assert ActivityStore(s.path).view()['record_count']==2; print('Persistent volume survived app restart')"
+        retained="from src.storage import SnapshotStore; s=SnapshotStore('/data/frontoffice.sqlite3'); assert len(s.orders())==2; from src.performance import PerformanceStore; assert len(PerformanceStore(s.path).events())==2; from src.mars import MarsStore; assert MarsStore(s.path).latest()['count']==2; from src.ubs_activity import ActivityStore; assert ActivityStore(s.path).view()['record_count']==2; from src.baseline import BaselineStore; assert BaselineStore(s.path).latest(); print('Persistent volume survived app restart')"
         print(run(['docker','exec',app,'python','-c',retained]))
 except Exception:
     print(subprocess.run(['docker','logs',app],capture_output=True,text=True).stderr)
