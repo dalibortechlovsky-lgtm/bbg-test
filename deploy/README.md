@@ -89,6 +89,23 @@ restoring into a separate volume and verify row counts and reported totals befor
 relying on a backup. Provider backups supplement this procedure; none is configured
 until a provider server actually exists. Keep backups out of Git and public paths.
 
+For expiries or margin settlements already confirmed by the portfolio owner,
+`record-expiries.py` provides a console repair without quoted Python. Download
+the reviewed utility to the host's `/root/record-expiries.py`, then run:
+
+```sh
+docker compose exec --no-tty app python - --settled-by 2026-01-31 --currency usd us0000000001 < /root/record-expiries.py
+```
+
+Supply the actual cutoff, settlement currency and confirmed security references.
+Lowercase ISINs and bare numeric Valors are accepted. The utility checks retained
+executions and the latest UBS holdings, creates a protected consistent backup,
+then records lifecycle annotations. Repeated runs retain existing audit reasons.
+The utility is sent through standard input, which also works with the production
+container's read-only filesystem. It adds no closing trades, prices or settlement
+amounts. It requires no rebuild or restart and does not resolve unrelated
+accounting reconciliation items.
+
 For application updates, back up the database, update the source release, rebuild
 and restart with Compose. Keep the prior release available for rollback. Restore
 only to a new volume during tests; do not overwrite the user's working database.
