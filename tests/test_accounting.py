@@ -156,6 +156,53 @@ class NativeAccountingTests(unittest.TestCase):
         self.assertEqual(Decimal(p['pnl_czk']),-42)
         self.assertEqual(p['label'],'Daily P/L')
 
+    def test_ytd_nav_bridge_does_not_need_internal_fx_attribution_fixings(self):
+        view=activity([])
+        view['ledger']=[{'id':str(i),'category':'fx_conversion','booking_date':'2026-01-05',
+                       'transaction_no':'FX','currency':c,'amount':v,'trade_date':'2026-01-05',
+                       'reversal':False,'isin':None,'account':IBAN if c=='USD' else 'CH0000000000000000002',
+                       'description':'Synthetic internal FX'} for i,(c,v) in enumerate([('USD','-100'),('EUR','89')])]
+        view['fx_pairs']=[{'transaction_no':'FX','status':'Matched internal currency legs'}]
+        close=snapshot(cash='0',fx='20')
+        close['exchange_rates']['EUR/CZK']='22'
+        close['positions'].append(dict(close['positions'][0],currency='EUR',quantity_or_balance='89',
+                                       raw={'IBAN':'CH0000000000000000002'}))
+        result=calculate_accounting(close,self.baseline,view)
+        self.assertEqual(Decimal(result['ytd_pnl_czk']),158)  # 90*20 + 89*22 - 180*20
+        self.assertEqual(result['nav_bridge']['net_external_flows_czk'],'0')
+        self.assertEqual(result['nav_bridge']['external_flows'],[])
+        self.assertFalse(result['portfolio_pnl_verified'])
+        self.assertTrue(result['history_requests'])
+        self.assertTrue(any(c['currency_contribution_czk'] is None for c in result['currencies']))
+
+    def test_ytd_bridge_uses_dated_external_funding_and_matches_attribution(self):
+        rows=[posting('50','Special payment order','DEPOSIT',Description1='External deposit'),
+              posting('-10','Special payment order','WITHDRAW',Description1='External withdrawal',
+                      **{'Trade date':'2026-01-06','Booking date':'2026-01-07','Value date':'2026-01-07'})]
+        view=activity(rows)
+        decisions={r['id']:{'classification':'external_funding'} for r in view['ledger']}
+        rates={('USDCZK Curncy','2026-01-05'):Decimal(21),('USDCZK Curncy','2026-01-07'):Decimal(22)}
+        result=calculate_accounting(snapshot(cash='140'),self.baseline,view,rates,cash_reviews=decisions)
+        bridge=result['nav_bridge']
+        self.assertEqual(Decimal(bridge['opening_nav_czk']),3600)
+        self.assertEqual(Decimal(bridge['closing_nav_czk']),4830)
+        self.assertEqual(Decimal(bridge['net_external_flows_czk']),830)
+        self.assertEqual(Decimal(result['ytd_pnl_czk']),400)
+        self.assertEqual(Decimal(bridge['attribution_difference_czk']),0)
+        self.assertTrue(result['portfolio_pnl_verified'])
+        blocked=calculate_accounting(snapshot(cash='140'),self.baseline,view,{},cash_reviews=decisions)
+        self.assertIsNone(blocked['ytd_pnl_czk'])
+        self.assertEqual(len(blocked['nav_bridge']['missing_external_fx']),2)
+
+    def test_csv_exports_main_ytd_and_nav_bridge_with_provisional_status(self):
+        result=calculate_accounting(snapshot(cash='100'),self.baseline,activity([],until='2026-09-30'))
+        csv=desk_csv({'accounting':result})
+        self.assertIn(b'YTD TOTAL',csv)
+        self.assertIn(b'OPENING NAV',csv)
+        self.assertIn(b'NET EXTERNAL FUNDING',csv)
+        self.assertIn(b'Provisional',csv)
+        self.assertIn(b'YTD = closing NAV',desk_html({'accounting':result}))
+
     def test_ambiguous_same_day_fills_and_missing_inventory_are_not_invented(self):
         buy=posting('-70','Purchase Spot','BUY',Description3='Number/Amt. 1; Transaction price: 70 USD')
         sell=posting('90','Sale Spot','SELL',Description3='Number/Amt. 1; Transaction price: 90 USD')

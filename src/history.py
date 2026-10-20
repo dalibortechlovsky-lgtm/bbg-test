@@ -17,6 +17,13 @@ class HistoryStore:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE name='fx_history'").fetchone():return {}
             return {(r[0],r[1]):Decimal(r[2]) for r in db.execute('SELECT security,date,price FROM fx_history')}
 
+    def sources(self):
+        if not self.path.exists():return []
+        with sqlite3.connect(self.path) as db:
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='fx_history'").fetchone():return []
+            return [dict(zip(['security','date','price','source'],r)) for r in
+                    db.execute('SELECT security,date,price,source FROM fx_history ORDER BY date,security')]
+
     def ingest(self,payload,requests,device_id=None,now=None):
         if not isinstance(payload,dict) or set(payload)!={'quotes'} or not isinstance(payload['quotes'],list) or len(payload['quotes'])>500:
             raise ValueError('Historical FX payload requires up to 500 quotes')

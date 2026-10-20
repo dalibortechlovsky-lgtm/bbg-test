@@ -102,6 +102,35 @@ def internal_fx_adjustments(flows,historical_fx):
     return adjustments
 
 
+def nav_bridge(baseline,snapshot,opening_values,ending_values,flows,historical_fx):
+    """Portfolio P/L needs external funding FX, not internal conversion fixings.
+
+    Internal FX is needed for the currency attribution, but its two cash legs
+    remain within portfolio NAV. Keep this independent reconciliation visible.
+    """
+    totals=[]
+    for source,values in [(baseline,opening_values),(snapshot,ending_values)]:
+        rates={c:fx_rate(source,c,'CZK') for c in values}
+        totals.append(None if any(v and rates[c] is None for c,v in values.items()) else
+                      sum((v*(rates[c] or ZERO) for c,v in values.items()),ZERO))
+    external=[];missing=[]
+    for ccy,rows in sorted(flows.items()):
+        for flow in rows:
+            if flow['kind']!='bank_payment':continue
+            rate=D(1) if ccy=='CZK' else historical_fx.get((ccy+'CZK Curncy',flow['date']))
+            amount=D(flow['amount'])
+            if rate is None:missing.append(ccy+'CZK Curncy on '+flow['date'])
+            external.append({'date':flow['date'],'reference':flow['reference'],'currency':ccy,
+                             'amount_native':str(amount),'fx_to_czk':text(rate),
+                             'amount_czk':text(amount*D(rate)) if rate is not None else None})
+    funding=None if missing else sum((D(f['amount_czk']) for f in external),ZERO)
+    pnl=totals[1]-totals[0]-funding if all(v is not None for v in totals) and funding is not None else None
+    return {'opening_nav_czk':text(totals[0]),'closing_nav_czk':text(totals[1]),
+            'net_external_flows_czk':text(funding),'pnl_czk':text(pnl),
+            'external_flows':external,'missing_external_fx':sorted(set(missing)),
+            'basis':'Closing NAV including accrued interest minus prior year-end NAV minus dated external funding; internal FX conversions and deposit movements stay within the portfolio.'}
+
+
 def calculate_accounting(snapshot,baseline,activity,historical_fx=None,lifecycle=None,cash_reviews=None):
     if not snapshot: return None
     if not baseline or baseline['as_of']!=str(int(snapshot['as_of'][:4])-1)+'-12-31':
@@ -351,17 +380,33 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews):
         for c,v in futures.items():realized_totals[c]+=v
     # A same-currency bank payment is funding, not performance. Cross-currency
     # FX legs cancel at portfolio level at the selected independent dated fix.
-    verified=bool(activity and coverage and all(a['complete'] for a in coverage) and not issues and all_rates)
     usable=not pending and not prior_pending and not uncertain and all(p['value'] is not None for p in current) and all(
         pair['status']=='Matched internal currency legs' for pair in (activity or {}).get('fx_pairs',[]))
     nav_complete=all(p['value'] is not None and (not p['value'] or fx_rate(snapshot,p['currency'],'CZK')) for p in current)
+    bridge=nav_bridge(baseline,snapshot,opening_values,ending_values,flows,historical_fx)
+    if not nav_complete or pending:
+        bridge['closing_nav_czk']=None
+        bridge['pnl_czk']=None
+    if prior_pending:
+        bridge['opening_nav_czk']=None
+        bridge['pnl_czk']=None
+    if uncertain:
+        bridge['net_external_flows_czk']=None
+        bridge['pnl_czk']=None
+    bridge['attribution_difference_czk']=text(D(bridge['pnl_czk'])-total) if all_rates and bridge['pnl_czk'] is not None else None
+    if bridge['attribution_difference_czk'] is not None and abs(D(bridge['attribution_difference_czk']))>D('0.005'):
+        issues.append('NAV less external funding does not reconcile to the asset/currency attribution')
+        usable=False
+    if not nav_complete:usable=False
+    bridge['usable']=bool(usable and bridge['pnl_czk'] is not None)
+    verified=bool(activity and coverage and all(a['complete'] for a in coverage) and not issues and all_rates and bridge['usable'])
     return {'as_of':cutoff,'opening_as_of':baseline['as_of'],'report_currency':'CZK',
             'status':'Reconciled supplied records' if verified else 'Provisional · coverage or reconciliation pending',
-            'portfolio_pnl_verified':verified,'ytd_pnl_czk':text(total) if all_rates and usable else None,
+            'portfolio_pnl_verified':verified,'ytd_pnl_czk':bridge['pnl_czk'] if bridge['usable'] else None,
             'ytd_asset_contribution_czk':str(all_gains) if usable and all(c['asset_contribution_czk'] is not None for c in currencies) else None,'assets':assets,'currencies':currencies,
             'realized_totals':{c:str(v) for c,v in realized_totals.items()},'realized':realized,
             'nav_czk':str(sum((v*(fx_rate(snapshot,c,'CZK') or ZERO) for c,v in ending_values.items()),ZERO)) if nav_complete and not pending else None,
-            'coverage':coverage,'issues':sorted(set(issues)),'cash_checks':cash_checks,'pending_settlements':pending,'cash_decisions':cash_decisions,
+            'coverage':coverage,'issues':sorted(set(issues)),'cash_checks':cash_checks,'pending_settlements':pending,'cash_decisions':cash_decisions,'nav_bridge':bridge,
             'history_requests':[{'security':s,'dates':sorted(d)} for s,d in sorted(requests.items())],
             'basis':'Average cost uses UBS native net settlement cash, including recorded fees. Carried costs use the year-end statement unless original UBS acquisition cash fully reconstructs the lot. Realized gains use historical cost and are not added again to YTD gains. YTD uses year-start market values including accrued interest. Asset gains use opening CZK FX; price/FX interaction belongs to currency. Bank payments are external to the selected UBS portfolio; FX conversions and deposits are internal. The difference between internal FX execution amounts and daily fixings is included once in the receiving currency contribution. Owner-confirmed FX hedge cash is moved from asset contribution to currency contribution without changing total P/L. Missing coverage remains provisional.'}
 
@@ -423,6 +468,7 @@ def accounting_view(path,snapshot=None):
     result=calculate_accounting(snapshot,BaselineStore(path).latest((snapshot or {}).get('as_of')),
                                 activity,rates,LifecycleStore(path).all(),decisions)
     if not result:return result
+    result['fx_sources']=HistoryStore(path).sources()
     import json,sqlite3
     previous=None
     with sqlite3.connect(path) as db:

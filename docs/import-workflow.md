@@ -133,6 +133,24 @@ P/L/NAV certification rather than being guessed. A live PX_LAST quote is not a h
 close. These are system implementation requirements rather than recurring owner
 worksheets. Main report currency is CZK; native asset returns remain visible.
 
+The portfolio total is independently checked as closing NAV less opening NAV
+less dated external funding. Internal conversion fixings are needed for currency
+attribution; their absence alone does not hide a supported portfolio total.
+Missing funding fixings, unconfirmed capital movements or pending settlement
+liabilities still withhold YTD. Coverage gaps remain explicitly provisional.
+The report and CSV include the NAV bridge and dated external funding.
+
+An owner-run fallback, `deploy/backfill-fx.py`, retrieves public official CNB
+yearly fixing files on the deployment host and supplies them to the app's
+`src.official_fx` importer. It sends no account information to CNB. Each missing
+date uses that date's published fixing or the preceding publication within seven
+days. Currency quotation units are divided explicitly. Missing dates fail before
+any write; no current quote is substituted. The importer backs up SQLite, retains
+the source text, URL and SHA-256, records the fixing's publication date and never
+overwrites an existing Bloomberg or CNB fixing. CNB and Bloomberg sources remain
+distinguishable in the report, API and CSV. This helper requires verified HTTPS
+access to `www.cnb.cz`; it does not change application network isolation.
+
 ## Owner-confirmed attribution design
 
 The main report includes the whole UBS portfolio, including cash and deposits,
