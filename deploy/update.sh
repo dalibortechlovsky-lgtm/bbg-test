@@ -109,7 +109,10 @@ for attempt in range(20):
         assert 'risk' in state and 'accounting' in state and 'snapshot_risk' in state
         stage='accounting source counts'
         for key,value in before['accounting_sources'].items():
-            assert state['accounting_source_counts'][key]>=value
+            actual=state['accounting_source_counts'].get(key)
+            if key=='activity_confirmations' and actual is None:
+                actual=len((state.get('accounting') or {}).get('activity_confirmations',[]))
+            assert actual is not None and actual>=value
         stage='release header'
         with urllib.request.urlopen(base+'/health',timeout=15) as response:
             assert response.headers.get('X-App-Release')==sys.argv[2]
