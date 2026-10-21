@@ -87,9 +87,11 @@ def request(path,data=None,headers=None):
     if headers is not None: values=headers
     with urllib.request.urlopen(urllib.request.Request(base+path,data=body,headers=values),timeout=15) as r:
         return json.load(r)
+stage='request status';last_error='none'
 for attempt in range(20):
     try:
         state=request('/api/status')
+        stage='core retained counts'
         assert len(state['positions'])==before['positions'] and len(state['trades'])==before['trades']
         assert (state.get('snapshot') or {}).get('id')==before['snapshot_id']
         assert state['execution_enabled'] is False and 'bloomberg_data' in state
@@ -105,20 +107,24 @@ for attempt in range(20):
         if state.get('mars'):
             assert state['mars']['calculation_policy']=='base_data_only'
         assert 'risk' in state and 'accounting' in state and 'snapshot_risk' in state
+        stage='accounting source counts'
         for key,value in before['accounting_sources'].items():
             assert state['accounting_source_counts'][key]>=value
+        stage='release header'
         with urllib.request.urlopen(base+'/health',timeout=15) as response:
             assert response.headers.get('X-App-Release')==sys.argv[2]
         if state.get('snapshot'):
+            stage='portfolio analytics invariants'
             from decimal import Decimal
             analytics=state['analytics']
             assert analytics['position_count']==before['positions']
             assert Decimal(analytics['broker_market_value'])==Decimal(state['snapshot']['summary']['market_value'])
             assert analytics['daily_pnl'] is None and analytics['realized_pnl'] is None
         break
-    except Exception:
+    except Exception as exc:
+        last_error=type(exc).__name__+(': '+str(exc) if str(exc) else '')
         time.sleep(3)
-else: raise RuntimeError('Updated dashboard readiness or data-preservation check failed')
+else: raise RuntimeError('Updated dashboard readiness or data-preservation check failed at '+stage+' ('+last_error+')')
 # Apply private owner confirmations supplied with this invocation, never in public source.
 confirmation=os.environ.get('BBG_SETTLEMENTS_B64')
 if confirmation:
