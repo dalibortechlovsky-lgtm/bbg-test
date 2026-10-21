@@ -120,7 +120,8 @@ for attempt in range(20):
             actual=state['accounting_source_counts'].get(key)
             if key=='activity_confirmations' and actual is None:
                 actual=len((state.get('accounting') or {}).get('activity_confirmations',[]))
-            assert actual is not None and actual>=value
+            if actual is None or actual<value:
+                raise RuntimeError(key+' retained '+str(actual)+'; expected at least '+str(value))
         if state.get('snapshot'):
             stage='portfolio analytics invariants'
             from decimal import Decimal
