@@ -1,4 +1,4 @@
-# Front Office Trade Control
+# Trading Platform
 
 The simplified desk uses native UBS files for whole-portfolio accounting in CZK.
 One upload accepts the prior year-end statement PDF, current positions CSV and
