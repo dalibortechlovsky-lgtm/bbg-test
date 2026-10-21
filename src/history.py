@@ -83,7 +83,11 @@ class HistoryStore:
                 old=db.execute('SELECT price,accrued FROM fx_history WHERE security=? AND date=?',(sec,day)).fetchone()
                 if old and (Decimal(old[0])!=value['price'] or old[1] is not None and value['accrued'] is not None and Decimal(old[1])!=value['accrued']):
                     raise ValueError('Concurrent historical observation conflict')
-                added+=db.execute('INSERT OR IGNORE INTO fx_history (security,date,price,source,accrued) VALUES (?,?,?,?,?)',
-                                  (sec,day,str(value['price']),'Bloomberg PX_LAST daily; previous close on non-trading days',
-                                   None if value['accrued'] is None else str(value['accrued']))).rowcount
+                if old and old[1] is None and value['accrued'] is not None:
+                    added+=db.execute('UPDATE fx_history SET accrued=? WHERE security=? AND date=? AND accrued IS NULL',
+                                      (str(value['accrued']),sec,day)).rowcount
+                elif not old:
+                    added+=db.execute('INSERT INTO fx_history (security,date,price,source,accrued) VALUES (?,?,?,?,?)',
+                                      (sec,day,str(value['price']),'Bloomberg PX_LAST daily; previous close on non-trading days',
+                                       None if value['accrued'] is None else str(value['accrued']))).rowcount
         return {'accepted':added,'existing':len(clean)-added}

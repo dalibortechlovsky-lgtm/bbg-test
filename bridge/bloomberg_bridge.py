@@ -74,6 +74,7 @@ def request_history(requests):
         for security in wanted:request.getElement('securities').appendValue(security)
         request.getElement('fields').appendValue('PX_LAST')
         request.getElement('fields').appendValue('YAS_BOND_ACCRUED')
+        request.getElement('fields').appendValue('INT_ACC')
         days=[day for values in wanted.values() for day in values]
         request.set('startDate',min(days).replace('-',''));request.set('endDate',max(days).replace('-',''))
         request.set('periodicitySelection','DAILY')
@@ -96,7 +97,7 @@ def request_history(requests):
                     except (InvalidOperation,ValueError,TypeError):continue
                     if value.is_finite() and value>0:
                         clean={'security':security,'date':day,'price':str(value)}
-                        try:accrued=Decimal(str(field.get('YAS_BOND_ACCRUED')))
+                        try:accrued=Decimal(str(field.get('YAS_BOND_ACCRUED',field.get('INT_ACC'))))
                         except (InvalidOperation,ValueError,TypeError):accrued=None
                         if accrued is not None and accrued.is_finite():clean['accrued']=str(accrued)
                         result.append(clean)

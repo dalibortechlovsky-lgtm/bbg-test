@@ -6,7 +6,8 @@ import hashlib
 import re
 import sqlite3
 
-from .accounting import accounting_view, is_future, matched_reversals, signed_quantity, source_key
+from .accounting import (accounting_view, closing_positions, is_future, matched_reversals,
+                         signed_quantity, source_key)
 from .baseline import BaselineStore
 from .history import HistoryStore
 from .lifecycle import LifecycleStore
@@ -60,8 +61,22 @@ def _key(position):
 def _metadata(path,baseline):
     from .storage import SnapshotStore
     latest=SnapshotStore(path).latest();result={}
+    verified={}
+    for row in closing_positions(latest) if latest else []:
+        scale=row['scale']
+        # If UBS reports quantity, clean market value and unit price that
+        # reconcile to an integer contract scale, the broker snapshot itself
+        # verifies that scale even when the description omits a 1:n ratio.
+        if (scale is None and row['kind']=='security' and row['price'] and row['quantity'] and
+                row['value'] is not None and not row['position'].get('accrued_interest')):
+            candidate=row['value']/row['quantity']/row['price'];integer=candidate.to_integral_value()
+            if integer>0 and abs(candidate-integer)<=D('0.000001'):scale=integer
+        if scale is not None:verified[row['key']]=scale
     for p in (latest or {}).get('positions',[]):
-        if _key(p):result[_key(p)]=p
+        key=_key(p)
+        if key:
+            result[key]=p|({'verified_unit_scale':str(verified[key])}
+                           if verified.get(key) is not None else {})
     for p in baseline['positions']:
         if p['kind']=='security' and p['key'] not in result:
             result[p['key']]={'isin':p.get('isin'),'valor':p.get('valor'),'product':p['key'],
@@ -71,6 +86,7 @@ def _metadata(path,baseline):
 
 def _scale(position,baseline_position=None):
     if baseline_position:return D(baseline_position['unit_scale'])
+    if position.get('verified_unit_scale') is not None:return D(position['verified_unit_scale'])
     if position.get('group','').startswith('Bonds'):return D('0.01')
     match=re.search(r'1:(\d+(?:\.\d+)?)',position.get('description',''))
     if match:return D(match[1])

@@ -97,7 +97,7 @@ class HistoricalBridgeTests(unittest.TestCase):
             RESPONSE=5
             def __init__(self,kind,rows):super().__init__([Message(r) for r in rows]);self.kind=kind
             def eventType(self):return self.kind
-        events=[Event(4,[{'security':'USDCZK Curncy','fieldData':[{'date':date(2026,1,2),'PX_LAST':21.5},
+        events=[Event(4,[{'security':'USDCZK Curncy','fieldData':[{'date':date(2026,1,2),'PX_LAST':21.5,'INT_ACC':1.25},
                     {'date':date(2026,1,3),'PX_LAST':21.5}]}]),Event(5,[{'security':'EURCZK Curncy',
                     'fieldData':[{'date':date(2026,1,2),'PX_LAST':24.1}]}])]
         class Session:
@@ -120,6 +120,6 @@ class HistoricalBridgeTests(unittest.TestCase):
         self.assertEqual(request.values['nonTradingDayFillMethod'],'PREVIOUS_VALUE')
         self.assertEqual(request.values['nonTradingDayFillOption'],'ALL_CALENDAR_DAYS')
         self.assertEqual(request.values['startDate'],'20260102')
-        self.assertEqual(request.elements['fields'].items,['PX_LAST','YAS_BOND_ACCRUED'])
+        self.assertEqual(request.elements['fields'].items,['PX_LAST','YAS_BOND_ACCRUED','INT_ACC'])
         self.assertEqual(len(result),2)
-        self.assertEqual(result[0],{'security':'USDCZK Curncy','date':'2026-01-02','price':'21.5'})
+        self.assertEqual(result[0],{'security':'USDCZK Curncy','date':'2026-01-02','price':'21.5','accrued':'1.25'})

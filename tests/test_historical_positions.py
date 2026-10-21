@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 from src.baseline import BaselineStore
 from src.history import HistoryStore
-from src.historical_positions import HistoricalRequestStore, reconstruct, selection, view
+from src.historical_positions import HistoricalRequestStore, _metadata, _scale, reconstruct, selection, view
 from src.storage import SnapshotStore
 from src.server import create_server
 from src.ubs_activity import ActivityStore
@@ -61,6 +61,13 @@ class HistoricalPositionTests(unittest.TestCase):
         self.assertEqual(store.dates(),['2026-01-02'])
         self.assertEqual({r['security'] for r in store.history_requests()},
                          {'/isin/'+ISIN,'USDCZK Curncy'})
+
+    def test_later_ubs_snapshot_can_verify_contract_scale(self):
+        content=(sample().replace('Call synthetic 1:100','Structured certificate')
+                 .replace('Equities - Equity investments','Equities - Structured products with equity character'))
+        SnapshotStore(self.db).import_content(content)
+        metadata,_=_metadata(self.db,BaselineStore(self.db).latest('2026-10-08'))
+        self.assertEqual(_scale(metadata['VALOR:TEST_OPTION']),Decimal(100))
 
     def test_future_and_prebaseline_dates_are_rejected_or_explicit(self):
         with self.assertRaises(ValueError):view(SnapshotStore(self.db),'2999-01-01')

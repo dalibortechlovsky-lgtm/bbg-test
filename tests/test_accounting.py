@@ -299,8 +299,15 @@ class AccountingStorageTests(unittest.TestCase):
             row={'security':'USDCZK Curncy','date':'2026-01-02','price':'21'}
             self.assertEqual(store.ingest({'quotes':[row]},requested)['accepted'],1)
             self.assertEqual(store.ingest({'quotes':[row]},[])['existing'],1)
+            bond={'security':'/isin/'+ISIN,'date':'2026-01-02','price':'91'}
+            bond_request=[{'security':'/isin/'+ISIN,'dates':['2026-01-02']}]
+            self.assertEqual(store.ingest({'quotes':[bond]},bond_request)['accepted'],1)
+            self.assertEqual(store.ingest({'quotes':[bond|{'accrued':'1.25'}]},bond_request)['accepted'],1)
+            self.assertEqual(store.observations()[('/isin/'+ISIN,'2026-01-02')]['accrued'],Decimal('1.25'))
+            with self.assertRaises(ValueError):
+                store.ingest({'quotes':[bond|{'accrued':'1.5'}]},bond_request)
             with self.assertRaises(ValueError):store.ingest({'quotes':[row|{'date':'2026-01-03'},row|{'price':'22'}]},requested)
-            self.assertEqual(len(store.rates()),1)
+            self.assertEqual(len(store.rates()),2)
             with self.assertRaises(ValueError):store.ingest({'quotes':[row|{'security':'IBM US Equity'}]},requested)
             quotes=QuoteStore(db);device=quotes.create_token('Test');quotes.revoke(device['id'])
             with self.assertRaises(PermissionError):store.ingest({'quotes':[]},[],device['id'])
