@@ -71,9 +71,13 @@ cp -a "$release/src" "$release/web" "$release/bridge" "$app/"
 cp "$release/Dockerfile" "$release/.dockerignore" "$app/"
 cp "$release/deploy/compose.yaml" "$release/deploy/Caddyfile" "$app/deploy/"
 docker compose --env-file .env config --quiet
-docker compose --env-file .env up -d --build --wait --wait-timeout 180
+# Build the reviewed archive from scratch. Reusing a COPY layer can leave the
+# container on stale Python source while still applying the new release label.
+docker compose --env-file .env build --no-cache app
+docker compose --env-file .env up -d --no-build --wait --wait-timeout 180
 docker compose --env-file .env exec -T proxy caddy reload --config /etc/caddy/Caddyfile
 docker compose --env-file .env exec -T app python -c "import shutil; assert shutil.which('pdftotext'), 'PDF extractor unavailable'"
+docker compose --env-file .env exec -T app python -c "import inspect,src.historical_positions,src.server; source=inspect.getsource(src.server.accounting_source_counts); assert 'activity_confirmations' in source; print('Release source verified inside container')"
 docker compose --env-file .env exec -T app python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/api/status',timeout=15).read().decode())" > "$backup/after-internal.json"
 python3 - "$backup/before.json" "$BBG_RELEASE_SHA" "$backup/after-internal.json" <<'PY'
 import base64,json,os,sys,time,urllib.request,urllib.error
