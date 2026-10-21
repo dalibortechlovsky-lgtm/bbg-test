@@ -74,13 +74,15 @@ docker compose --env-file .env config --quiet
 docker compose --env-file .env up -d --build --wait --wait-timeout 180
 docker compose --env-file .env exec -T proxy caddy reload --config /etc/caddy/Caddyfile
 docker compose --env-file .env exec -T app python -c "import shutil; assert shutil.which('pdftotext'), 'PDF extractor unavailable'"
-python3 - "$backup/before.json" "$BBG_RELEASE_SHA" <<'PY'
+docker compose --env-file .env exec -T app python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/api/status',timeout=15).read().decode())" > "$backup/after-internal.json"
+python3 - "$backup/before.json" "$BBG_RELEASE_SHA" "$backup/after-internal.json" <<'PY'
 import base64,json,os,sys,time,urllib.request,urllib.error
 from pathlib import Path
 login=json.loads(Path('/root/bbg-dashboard-login.json').read_text())
 auth='Basic '+base64.b64encode((login['username']+':'+login['password']).encode()).decode()
 base=login['url']
 before=json.loads(Path(sys.argv[1]).read_text())
+internal=json.loads(Path(sys.argv[3]).read_text())
 def request(path,data=None,headers=None):
     body=json.dumps(data).encode() if data is not None else None
     values={'Authorization':auth,'Content-Type':'application/json','X-Bridge-Action':'manage','Origin':base}
@@ -91,6 +93,12 @@ stage='request status';last_error='none'
 for attempt in range(20):
     try:
         state=request('/api/status')
+        stage='release header'
+        with urllib.request.urlopen(base+'/health',timeout=15) as response:
+            assert response.headers.get('X-App-Release')==sys.argv[2]
+        # Preserve portfolio data against the new app container directly. The
+        # proxy remains independently checked for authentication and release.
+        state=internal
         stage='core retained counts'
         assert len(state['positions'])==before['positions'] and len(state['trades'])==before['trades']
         assert (state.get('snapshot') or {}).get('id')==before['snapshot_id']
@@ -113,9 +121,6 @@ for attempt in range(20):
             if key=='activity_confirmations' and actual is None:
                 actual=len((state.get('accounting') or {}).get('activity_confirmations',[]))
             assert actual is not None and actual>=value
-        stage='release header'
-        with urllib.request.urlopen(base+'/health',timeout=15) as response:
-            assert response.headers.get('X-App-Release')==sys.argv[2]
         if state.get('snapshot'):
             stage='portfolio analytics invariants'
             from decimal import Decimal
