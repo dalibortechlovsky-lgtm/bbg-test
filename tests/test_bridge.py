@@ -120,6 +120,6 @@ class HistoricalBridgeTests(unittest.TestCase):
         self.assertEqual(request.values['nonTradingDayFillMethod'],'PREVIOUS_VALUE')
         self.assertEqual(request.values['nonTradingDayFillOption'],'ALL_CALENDAR_DAYS')
         self.assertEqual(request.values['startDate'],'20260102')
-        self.assertEqual(request.elements['fields'].items,['PX_LAST'])
+        self.assertEqual(request.elements['fields'].items,['PX_LAST','YAS_BOND_ACCRUED'])
         self.assertEqual(len(result),2)
         self.assertEqual(result[0],{'security':'USDCZK Curncy','date':'2026-01-02','price':'21.5'})

@@ -86,6 +86,12 @@ def report_csv(data):
     writer.writerow(['section','date','description','identifier','native_currency','quantity','broker_price','price_convention',
                      'size_'+data['size_currency'],'snapshot_unrealized_'+data['pnl_currency'],'realized_native','income_native','notes'])
     def emit(values): writer.writerow([spreadsheet(v) for v in values])
+    selection=data.get('snapshot_selection') or {}
+    if selection.get('requested_as_of'):
+        emit(['REQUESTED DATE',selection['requested_as_of'],'','','','','','','','','','',selection['message']])
+        reconstructed=selection.get('selection')=='reconstructed'
+        emit(['RECONSTRUCTED VALUATION' if reconstructed else 'ACTUAL UBS SNAPSHOT',data['holdings_as_of'],'','','','','','','','','','',
+              'Positions and values use UBS activity and Bloomberg history.' if reconstructed else 'Positions and values use this stored UBS snapshot date.'])
     emit(['BASIS',data['date'],'','','','','','','','','','',data['basis']])
     for warning in data['performance']['warnings']:
         emit(['BASIS',data['date'],'','','','','','','','','','',warning])
@@ -113,6 +119,10 @@ def report_html(data):
     parts=['''<!doctype html><html lang="en"><meta charset="utf-8"><title>Trading Overview</title><style>
 body{font:12px Arial,sans-serif;color:#161616;background:white;margin:32px auto;max-width:1100px;padding:24px}h1{font-size:22px;color:#777}h2{font-size:14px;margin-top:28px}table{border-collapse:collapse;width:100%;margin:14px 0}td,th{padding:5px 7px;text-align:left;vertical-align:top}.num{text-align:right;white-space:nowrap}.negative{background:#ffc5ca;color:#9c0006}.positive{background:#c6efce;color:#006100}.missing{color:#777}.group td{font-weight:bold;border-bottom:1px solid black;padding-top:20px}.summary{width:65%;margin-left:auto}.notes{font-size:11px;color:#555;line-height:1.5}.toolbar{padding:12px;background:#eee}button,a{margin-right:14px}thead{display:table-header-group}tr{break-inside:avoid}@media print{body{margin:0;max-width:none;padding:0;font-size:10px}td,th{padding:4px}.toolbar{display:none}@page{size:A4 portrait;margin:12mm}}
 </style><div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div><h1>Trading Overview</h1>''']
+    selection=data.get('snapshot_selection') or {}
+    if selection.get('requested_as_of'):
+        label='Reconstructed positions and P/L date' if selection.get('selection')=='reconstructed' else 'Actual UBS snapshot and P/L date'
+        parts.append('<p><strong>Requested date: '+e(selection['requested_as_of'])+'</strong><br>'+label+': '+e(data['holdings_as_of'])+'</p><p class="notes">'+e(selection['message'])+'</p>')
     parts.append('<p>Date '+e(data['date'])+' · Holdings '+e(data['holdings_as_of'])+'</p><p class="notes">'+e(data['basis'])+'</p>')
     perf=data['performance']
     parts.append('<table class="summary"><thead><tr><th>Imported performance · average cost</th><th>Currency</th><th>YTD realized</th><th>YTD income</th></tr></thead><tbody>')

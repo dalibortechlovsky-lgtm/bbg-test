@@ -1,4 +1,5 @@
 """Scoped device tokens and latest Bloomberg quotes, separate from UBS valuations."""
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -103,8 +104,13 @@ class QuoteStore:
             securities |= {ccy + report_ccy + ' Curncy' for ccy in quote_currencies if ccy != report_ccy}
         from .accounting import accounting_view
         accounting=accounting_view(self.path,snapshot)
+        from .historical_positions import HistoricalRequestStore
+        requested=HistoricalRequestStore(self.path).history_requests()
+        history=defaultdict(set)
+        for row in (accounting.get('history_requests',[]) if accounting else [])+requested:
+            history[row['security']].update(row['dates'])
         return {'securities': sorted(securities),
-                'history_requests':accounting.get('history_requests',[]) if accounting else [],
+                'history_requests':[{'security':s,'dates':sorted(days)} for s,days in sorted(history.items())],
                 'unmapped_count': sum(p['kind'] == 'security' and not p.get('isin') for p in positions),
                 'snapshot_as_of': snapshot['as_of'] if snapshot else None,
                 'mars_as_of': mars['as_of'] if mars else None}

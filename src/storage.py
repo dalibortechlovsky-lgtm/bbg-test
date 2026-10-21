@@ -2,7 +2,7 @@
 import hashlib
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from .positions import parse_positions
@@ -41,6 +41,35 @@ class SnapshotStore:
             result = db.execute('SELECT payload FROM snapshots '
                                 'ORDER BY as_of DESC, exported_at DESC, rowid DESC LIMIT 1').fetchone()
         return json.loads(result[0]) if result else None
+
+    def available_dates(self):
+        """Return dates with an immutable UBS positions snapshot."""
+        if not self.path.exists():
+            return []
+        with sqlite3.connect(self.path) as db:
+            if not has_table(db, 'snapshots'):
+                return []
+            return [row[0] for row in db.execute(
+                'SELECT DISTINCT as_of FROM snapshots ORDER BY as_of')]
+
+    def at_or_before(self, requested):
+        """Select a real snapshot without reconstructing positions between dates."""
+        requested_date = date.fromisoformat(requested)
+        if requested_date.isoformat() != requested:
+            raise ValueError('Historical date must be YYYY-MM-DD')
+        if requested_date > date.today():
+            raise ValueError('Historical date cannot be in the future')
+        if not self.path.exists():
+            return None
+        with sqlite3.connect(self.path) as db:
+            if not has_table(db, 'snapshots'):
+                return None
+            row = db.execute(
+                'SELECT payload FROM snapshots WHERE as_of <= ? '
+                'ORDER BY as_of DESC, exported_at DESC, rowid DESC LIMIT 1',
+                (requested,),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
 
     def import_orders_content(self, content):
         from .keytrader import import_keytrader_csv

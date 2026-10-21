@@ -1,16 +1,707 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Trading desk</title><style>body{margin:0;background:#0d1522;color:#e5edf7;font:16px system-ui}main{max-width:1400px;margin:36px auto;padding:24px}h1{font-size:36px}small,.muted{color:#a5b5cb}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.card{background:#172336;border:1px solid #304057;border-radius:12px;padding:24px;margin-top:20px}.tag{color:#ffcf7a}.scroll{overflow-x:auto}table{width:100%;text-align:left;border-collapse:collapse;font-size:14px}th,td{padding:12px 8px;border-bottom:1px solid #304057}button,select,input{font:inherit;background:#263950;color:white;border:1px solid #54708b;border-radius:6px;padding:8px}button{cursor:pointer}button:disabled{opacity:.5}#error{color:#ffadad}td.num{white-space:nowrap;text-align:right}li{margin:8px 0}a{color:#9bd3ff}h2{font-size:22px}summary{cursor:pointer;font-weight:600;padding:8px 0}td.negative{color:#ffb0b0}td.positive{color:#8ce5bf}.metric{font-size:27px;margin:12px 0;overflow-wrap:anywhere}.subtitle{max-width:850px;line-height:1.6}.statusline{display:flex;gap:24px;flex-wrap:wrap}.statusline p{margin:6px 0}input[type=file]{max-width:100%;box-sizing:border-box}details.card>summary{font-size:20px}.metric small{font-size:13px}#desk-status{font-weight:600}table th{font-size:12px;color:#a5b5cb} .actions{display:flex;flex-wrap:wrap;gap:10px}@media(max-width:600px){main{margin:10px auto;padding:12px}.card{padding:16px}h1{font-size:30px}.grid{grid-template-columns:1fr 1fr;gap:10px}.metric{font-size:22px}button{max-width:100%}h2{font-size:19px}}</style><main><small>FRONT OFFICE / UBS</small><h1>Trading desk</h1><p class="muted subtitle">Whole-portfolio performance in CZK, with asset returns and currency moves shown separately.</p><div class="statusline"><p><small>Bloomberg</small> <span id="bbg">Checking…</span></p><p><small>UBS</small> <span id="ubs">Checking…</span></p></div><section class="card"><h2>Update UBS portfolio</h2><p class="muted">Select the positions CSV and each currency account’s transaction CSV together. Include the prior year-end statement PDF once. For the first setup, export transactions from 1 January through the valuation date; later overlapping exports merge safely. Files are recognized and checked as one batch.</p><form id="upload"><input id="file" type="file" accept=".csv,.pdf,text/csv,application/pdf" multiple required><button id="import" type="submit">Import selected files</button></form><p id="upload-status" aria-live="polite"></p><details><summary>Imported file details</summary><ul id="upload-files" class="muted"></ul></details></section><section class="card"><h2>Portfolio P&amp;L</h2><p id="desk-date" class="muted">Import UBS data to get started.</p><p id="desk-status" class="tag"></p><div class="grid"><div><small>Net assets · CZK · incl. accrued interest</small><p id="desk-nav" class="metric">—</p></div><div><small>YTD P/L · CZK</small><p id="desk-ytd" class="metric">—</p></div><div><small id="desk-period-label">Daily / period P/L · CZK</small><p id="desk-period" class="metric">—</p><small id="desk-period-date"></small></div><div><small>Recorded realized · native currencies</small><p id="desk-realized" class="metric">—</p><small>Historical average cost, including recorded fees</small></div></div><p class="muted">Realized gains are part of total performance and are shown separately; they are not added to YTD P/L again. A daily result needs consecutive closing snapshots.</p></section>
-<section class="card"><h2>Asset contribution &amp; currency contribution</h2><p class="muted">Asset returns stay in their native currency. The currency contribution revalues the whole currency balance: positions, cash and deposits. Amounts below translate both contributions into CZK.</p><div class="scroll"><table><thead><tr><th>Currency</th><th>Native asset P/L</th><th>Asset contribution CZK</th><th>Currency contribution CZK</th><th>Total CZK</th></tr></thead><tbody id="desk-currencies"></tbody></table></div><details><summary>Cash, deposits and settled derivatives</summary><p class="muted">Cash/deposit income and costs include residual unallocated cash items until reconciliation is complete. Expiry and margin settlements are grouped where UBS does not identify an individual leg.</p><div class="scroll"><table><thead><tr><th>Currency</th><th>Grouped derivatives cash result</th><th>Cash/deposits &amp; unallocated items</th><th>FX hedge cash · native</th><th>Internal FX fixing difference CZK</th></tr></thead><tbody id="desk-cash-pnl"></tbody></table></div></details></section>
-<section class="card"><h2>Trading positions</h2><p class="muted">Carried holdings show price returns against the year-start market price; new holdings use remaining average acquisition cost. Income is included in asset P/L. Cash and deposits are covered in the portfolio totals above.</p><label>Show <select id="desk-position-filter"><option value="open">Open positions</option><option value="closed">Closed positions</option><option value="all">All positions</option></select></label><div class="scroll"><table><thead><tr><th>Instrument / currency</th><th>Quantity</th><th>Native price return</th><th>YTD asset P/L native</th><th>Asset contribution CZK</th><th>Realized native</th><th>Reconciliation</th></tr></thead><tbody id="desk-assets"></tbody></table></div></section>
-<section class="card"><h2>Derivatives risk</h2><p id="desk-risk-basis" class="muted"></p><div class="scroll"><table><thead><tr><th>Option / expiry</th><th>Currency</th><th>Max premium loss from current mark</th><th>Underlying −10% at expiry</th><th>Unchanged at expiry</th><th>Underlying +10% at expiry</th></tr></thead><tbody id="desk-risk"></tbody></table></div><ul id="desk-risk-missing" class="muted"></ul></section>
-<details class="card"><summary>Reconciliation &amp; remaining data</summary><ul id="desk-issues" class="tag"></ul><p id="desk-basis" class="muted"></p><h3>One-time cash review</h3><p class="muted">External funding means money crossed the selected UBS portfolio boundary. Import both account legs for internal transfers. Classify OTC cash as a trading result or an FX hedge only when its source confirms that purpose.</p><p id="cash-review-message" aria-live="polite"></p><div class="scroll"><table><thead><tr><th>Date / reference</th><th>Description / bank detail</th><th>Currency</th><th>Net cash</th><th>Owner classification</th></tr></thead><tbody id="desk-cash-review"></tbody></table></div><div class="scroll"><table><thead><tr><th>Cash / deposit</th><th>Currency</th><th>Calculated closing balance</th><th>UBS closing balance</th><th>Difference</th></tr></thead><tbody id="desk-cash-checks"></tbody></table></div><p id="desk-pending" class="muted"></p></details><section class="card"><h2>Trader report export</h2><p class="muted">Open the Trading Overview, then Print / Save PDF, or download CSV. It includes open and closed positions, average-cost realized gains, asset and currency contributions, and the same reconciliation status shown here.</p><details><summary>Other report source / legacy display settings</summary><label>Report source <select id="report-source"><option value="ubs">UBS + calculated performance</option><option value="mars">MARS base data</option></select></label> <label>Size currency <input id="report-size" value="EUR" maxlength="3" size="3"></label> <label>Unrealized P/L currency <input id="report-pnl" value="CZK" maxlength="3" size="3"></label></details><p><button id="report-print">Open printable report / Save as PDF</button> <button id="report-html">Download HTML</button> <button id="report-csv">Download CSV</button></p></section><details class="card" id="source-details"><summary>Source records &amp; account activity</summary><section class="card"><h2>UBS activity reconciliation</h2><p id="activity-summary" class="tag">No account transaction files imported.</p><div class="scroll"><table><thead><tr><th>Account / currency</th><th>Transaction-date coverage</th><th>Cash chain</th><th>Export closing cash</th><th>Snapshot comparison</th></tr></thead><tbody id="activity-accounts"></tbody></table></div><p id="activity-fx" class="muted"></p><details><summary>Transfers and settlements to review</summary><p class="muted">Transfers require a portfolio-boundary check. OTC payments need their instrument reference.</p><div class="scroll"><table><thead><tr><th>Booking date</th><th>Currency</th><th>Net cash</th><th>Type</th><th>Review</th></tr></thead><tbody id="activity-review"></tbody></table></div></details><details><summary>Account postings</summary><p><a href="/api/reports/ubs-activity.csv" style="color:#9bd3ff">Export activity review CSV</a></p><div class="scroll"><table><thead><tr><th>Trade date</th><th>Booking / value date</th><th>Type / instrument</th><th>ISIN / Valor</th><th>Number/amount · price</th><th>Currency</th><th>Net cash</th><th>Transaction no.</th></tr></thead><tbody id="activity-ledger"></tbody></table></div></details><ul id="activity-warnings" class="muted"></ul></section></details><details class="card" id="advanced"><summary>Connections &amp; advanced tools</summary><p class="muted">Native UBS imports drive the main portfolio accounting. MARS and PTD are audit/reference sources. Manual ledgers and model inputs remain separate.</p><section class="card"><h2>Connect your Windows Bloomberg Terminal</h2><p class="muted">Download the worker and a private device configuration into the same folder. The device token uploads quotes and reads the security watchlist; it cannot read account balances or submit orders. Tokens expire after 90 days.</p><p><a href="/bridge/bloomberg_bridge.py" download="bloomberg_bridge.py" style="color:#9bd3ff">Download Windows worker</a></p><button id="create-bridge">Create device & download configuration</button><p id="bridge-message" aria-live="polite"></p><p class="muted">In PowerShell, run the worker with --config bbg-bridge-config.json. Keep the configuration private; never send it in chat.</p><div id="bridge-devices"></div></section><section class="card"><h2>Bloomberg price snapshots</h2><p class="muted">PX_LAST is displayed separately from UBS valuations. Receipt time is not an exchange trade timestamp. ISIN lookup may resolve a different listing; quote currency, listing and bond/option conventions require verification before valuation. Missing-ISIN options need manual mapping.</p><div class="scroll"><table><thead><tr><th>Security / ISIN</th><th>PX_LAST</th><th>Quote currency</th><th>Received (UTC)</th><th>Age</th><th>Status</th></tr></thead><tbody id="bloomberg-quotes"></tbody></table></div></section><section class="card"><h2>Portfolio snapshot</h2><p id="valuation" class="tag">No positions imported.</p><div class="grid"><div><small>Reported market value</small><p id="value">—</p></div><div><small>Reported accrued interest · separate</small><p id="accrued">—</p></div><div><small>Position count</small><p id="count">—</p></div></div><ul id="warnings" class="muted"></ul></section><section class="card"><h2>Portfolio valuation &amp; P/L</h2><p id="analytics-date" class="tag">Import a positions snapshot to calculate analytics.</p><div class="grid"><div><small>Indicative market value · mixed dates</small><p id="indicative-value">—</p></div><div><small>Estimated change from UBS snapshot · not daily P/L</small><p id="valuation-change">—</p></div><div><small>Snapshot unrealized P/L · cost-covered holdings only</small><p id="snapshot-pnl">—</p></div></div><p id="analytics-coverage" class="muted"></p><ul id="analytics-notes" class="muted"></ul><h3>Currency allocation</h3><p class="muted">UBS market values in portfolio currency; native cash and deposits are separate. This is denomination allocation, not FX delta exposure.</p><div class="scroll"><table><thead><tr><th>Currency</th><th>Net market value</th><th>Gross market value</th><th>Net weight</th><th>Native cash</th><th>Native deposits</th></tr></thead><tbody id="currency-allocation"></tbody></table></div><h3>Valuation coverage by holding</h3><div class="scroll"><table><thead><tr><th>Holding</th><th>UBS value</th><th>Indicative value</th><th>Estimated change</th><th>Snapshot unrealized P/L</th><th>Price receipt (UTC)</th><th>FX receipt (UTC)</th><th>Basis / missing data</th></tr></thead><tbody id="analytics-holdings"></tbody></table></div></section><section class="card"><h2>Cash account balances</h2><p class="muted">Native currencies. Call deposits are listed separately in holdings; balances are not a measure of available buying power.</p><div class="scroll"><table><thead><tr><th>Currency</th><th>Reported balance</th><th>Intraday balance</th></tr></thead><tbody id="cash"></tbody></table></div></section><section class="card"><h2>Holdings</h2><label>UBS group <select id="filter"><option value="">All groups</option></select></label><div class="scroll"><table><thead><tr><th>Instrument / account</th><th>ISIN / Valor</th><th>Currency</th><th>Quantity / balance</th><th>Market price</th><th>Reported value <span class="base"></span></th><th>UBS unrealized P/L %</th></tr></thead><tbody id="holdings"></tbody></table></div></section><section class="card"><h2>Bloomberg MARS base data</h2><p class="muted">Import the static MARS XLSX. Currency-dependent values, P/L and Greeks are excluded. Identifiers, source positions and contract fields stay separate from UBS holdings. The existing Windows bridge will request these exact tickers to obtain independent prices, currencies and ISINs.</p><form id="mars-upload"><input id="mars-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required><p><label>Valuation date <input id="mars-date" type="date" required></label> <label>Report currency setting <input id="mars-currency" placeholder="Unconfirmed" maxlength="3" size="12"></label> <label>P/L period setting <input id="mars-period" placeholder="Unconfirmed" maxlength="80"></label></p><button id="mars-import" type="submit">Import MARS XLSX</button></form><p id="mars-message" aria-live="polite"></p><p id="mars-summary" class="tag">No MARS snapshot imported.</p><ul id="mars-warnings" class="muted"></ul><div class="scroll"><table><thead><tr><th>Group / ticker</th><th>Position display</th><th>Notional · source units</th><th>Export MktPx / CostPx · units unverified</th><th>Strike</th><th>Trade date</th><th>Expiry / delivery</th><th>Underlying</th><th>Independent Bloomberg quote / currency / ISIN</th></tr></thead><tbody id="mars-positions"></tbody></table></div><p class="muted">Base records are not yet independently valued: price scales, quantities and contract multipliers require verification. MARS conversion and Greeks are not used for calculations.</p></section><section class="card"><h2>Daily &amp; realized P/L · average cost</h2><p class="muted">Separate verified event ledger; KeyTrader summaries are not treated as dated fills. Net amounts include fees. Totals cover imported history only and remain in native currencies.</p><p><a style="color:#9bd3ff" href="/api/templates/performance.csv">Download performance CSV template</a></p><details><summary>How to prepare the event ledger</summary><p>Use ISO dates (YYYY-MM-DD) and unique event_id values. Sequence orders fills on the same date. For each account/security/currency, add one OPENING record before its trades: signed quantity, historical average cost price (including fees), multiplier and zero fees. Use zero quantity/price for a genuinely new position. BUY/SELL quantity is positive; fees are nonnegative, in the same currency. For bonds priced in percent, supply multiplier 0.01 only after verifying nominal units; for options supply the verified contract multiplier.</p><p>INCOME uses net amount. CASHFLOW is an external deposit (positive) or withdrawal (negative), never a trade or dividend. VALUATION uses complete closing account value, including cash, in the stated currency. Leave security/quantity/price/multiplier/fees blank for these records. Consecutive dates produce daily P/L; gaps produce period P/L. Separate accounts/currencies are never silently netted. Repeated event IDs are ignored; conflicting IDs reject the entire file. Edit the source CSV before import; corrections to stored records need a reviewed adjustment workflow.</p></details><form id="performance-upload"><input id="performance-file" type="file" accept=".csv,text/csv" required><button id="performance-import" type="submit">Import performance events</button></form><p id="performance-message" aria-live="polite"></p><p id="performance-basis" class="muted"></p><ul id="performance-warnings" class="tag"></ul><div class="scroll"><table><thead><tr><th>Currency</th><th>Realized · imported history</th><th>YTD realized</th><th>YTD net income</th></tr></thead><tbody id="performance-totals"></tbody></table></div><h3>Daily / period P/L</h3><div class="scroll"><table><thead><tr><th>Account</th><th>From</th><th>To</th><th>Currency</th><th>Basis</th><th>External flows</th><th>P/L</th></tr></thead><tbody id="daily-pnl"></tbody></table></div><h3>Realized trade P/L</h3><div class="scroll"><table><thead><tr><th>Date</th><th>Account</th><th>Security</th><th>Closed quantity</th><th>Currency</th><th>P/L · fees included</th></tr></thead><tbody id="realized-pnl"></tbody></table></div></section><section class="card"><h2>Derivatives risk · verified inputs</h2><p class="muted">European vanilla option Greeks and full spot/volatility scenarios; linear futures delta. Unsupported or missing terms are excluded. Inputs older than 15 minutes are excluded from totals. Model values are separate from UBS valuations.</p><p><a href="/api/templates/risk.csv" style="color:#9bd3ff">Download risk CSV template</a></p><details><summary>Risk input requirements</summary><p>Copy position_id from the holdings identifiers below. kind is european_call, european_put or future. Supply verified underlying, currency, multiplier, spot (futures quote for future), timezone-aware expiry and observed_at, and verified=yes. Options also require strike, volatility (0.25 means 25%), rate and dividend_yield as decimal fractions. American/exotic/structured contracts are not supported. Position quantities come from the dated UBS snapshot. Updating PX_LAST does not refresh volatility or other risk inputs; upload a new verified input set.</p></details><form id="risk-upload"><input id="risk-file" type="file" accept=".csv,text/csv" required><button id="risk-import" type="submit">Import verified risk inputs</button></form><p id="risk-message" aria-live="polite"></p><p id="risk-basis" class="muted"></p><div class="scroll"><table><thead><tr><th>Holding / underlying</th><th>Currency</th><th>Status / age</th><th>Delta cash</th><th>Gamma 1% P/L</th><th>Vega 1pp</th><th>Theta/day</th><th>Spot −10%</th><th>Spot +10%</th><th>Vol +5pp</th></tr></thead><tbody id="risk-rows"></tbody></table></div><h3>Recent modeled risk totals</h3><div class="scroll"><table><thead><tr><th>Currency</th><th>Delta cash</th><th>Gamma 1%</th><th>Vega 1pp</th><th>Theta/day</th><th>Spot −10%</th><th>Spot +10%</th></tr></thead><tbody id="risk-totals"></tbody></table></div><ul id="risk-missing" class="tag"></ul><details><summary>Holding identifiers for risk imports</summary><div class="scroll"><table><thead><tr><th>Holding</th><th>position_id</th><th>Signed quantity</th><th>Currency</th></tr></thead><tbody id="risk-identifiers"></tbody></table></div></details></section><section class="card"><h2>Import KeyTrader order history</h2><p class="muted">Completed orders become execution summaries. Working and cancelled orders remain in the import review. Conflicting batches do not change the blotter.</p><form id="orders-upload"><input id="orders-file" type="file" accept=".csv,text/csv" required><button id="orders-import" type="submit">Import orders</button></form><p id="orders-upload-status" aria-live="polite"></p></section><section class="card"><h2>Trade blotter</h2><p id="trade-count" class="tag">No order summaries imported.</p><p class="muted">Order-entry time has unspecified timezone; execution time is unavailable. Summaries are not individual fills. These trades have not been applied to the dated positions snapshot.</p><div class="scroll"><table><thead><tr><th>Entered on</th><th>Instrument / ISIN</th><th>Side</th><th>Quantity</th><th>Average price</th><th>Currency</th><th>Account</th><th>Order number</th><th>Record type</th></tr></thead><tbody id="trades"></tbody></table></div></section><section class="card"><h2>Order import review</h2><p class="muted">Latest 20 file imports. All completed import reports are retained in local storage. Cancelled or working orders are excluded from the blotter; they do not imply an execution.</p><div class="scroll"><table><thead><tr><th>Imported (UTC)</th><th>Result</th><th>New summaries</th><th>Already stored</th><th>Review / errors</th></tr></thead><tbody id="order-reviews"></tbody></table></div></section></details><p id="error" aria-live="polite"></p><p class="muted">Dated UBS valuations · Bloomberg market data · Order execution disabled</p></main>
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trading desk</title>
+<style>body{margin:0;background:#0d1522;color:#e5edf7;font:16px system-ui}main{max-width:1400px;margin:36px auto;padding:24px}h1{font-size:36px}small,.muted{color:#a5b5cb}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.card{background:#172336;border:1px solid #304057;border-radius:12px;padding:24px;margin-top:20px}.tag{color:#ffcf7a}.scroll{overflow-x:auto}table{width:100%;text-align:left;border-collapse:collapse;font-size:14px}th,td{padding:12px 8px;border-bottom:1px solid #304057}button,select,input{font:inherit;background:#263950;color:white;border:1px solid #54708b;border-radius:6px;padding:8px}button{cursor:pointer}button:disabled{opacity:.5}#error{color:#ffadad}td.num{white-space:nowrap;text-align:right}li{margin:8px 0}a{color:#9bd3ff}h2{font-size:22px}summary{cursor:pointer;font-weight:600;padding:8px 0}td.negative{color:#ffb0b0}td.positive{color:#8ce5bf}.metric{font-size:27px;margin:12px 0;overflow-wrap:anywhere}.subtitle{max-width:850px;line-height:1.6}.statusline{display:flex;gap:24px;flex-wrap:wrap}.statusline p{margin:6px 0}input[type=file]{max-width:100%;box-sizing:border-box}details.card>summary{font-size:20px}.metric small{font-size:13px}#desk-status{font-weight:600}table th{font-size:12px;color:#a5b5cb} .actions{display:flex;flex-wrap:wrap;gap:10px}@media(max-width:600px){main{margin:10px auto;padding:12px}.card{padding:16px}h1{font-size:30px}.grid{grid-template-columns:1fr 1fr;gap:10px}.metric{font-size:22px}button{max-width:100%}h2{font-size:19px}}</style>
+<main>
+<small>FRONT OFFICE / UBS</small>
+<h1>Trading desk</h1>
+<p class="muted subtitle">Whole-portfolio performance in CZK, with asset returns and currency moves shown separately.</p>
+<div class="statusline">
+<p>
+<small>Bloomberg</small> <span id="bbg">Checking…</span>
+</p>
+<p>
+<small>UBS</small> <span id="ubs">Checking…</span>
+</p>
+</div>
+<section class="card">
+<h2>Update UBS portfolio</h2>
+<p class="muted">Select the positions CSV and each currency account’s transaction CSV together. Include the prior year-end statement PDF once. For the first setup, export transactions from 1 January through the valuation date; later overlapping exports merge safely. Files are recognized and checked as one batch.</p>
+<form id="upload">
+<input id="file" type="file" accept=".csv,.pdf,text/csv,application/pdf" multiple required>
+<button id="import" type="submit">Import selected files</button>
+</form>
+<p id="upload-status" aria-live="polite">
+</p>
+<details>
+<summary>Imported file details</summary>
+<ul id="upload-files" class="muted">
+</ul>
+</details>
+</section>
+<section class="card">
+<h2>Portfolio P&amp;L</h2>
+<p id="desk-date" class="muted">Import UBS data to get started.</p>
+<p id="desk-status" class="tag">
+</p>
+<div class="grid">
+<div>
+<small>Net assets · CZK · incl. accrued interest</small>
+<p id="desk-nav" class="metric">—</p>
+</div>
+<div>
+<small>YTD P/L · CZK</small>
+<p id="desk-ytd" class="metric">—</p>
+</div>
+<div>
+<small id="desk-period-label">Daily / period P/L · CZK</small>
+<p id="desk-period" class="metric">—</p>
+<small id="desk-period-date">
+</small>
+</div>
+<div>
+<small>Recorded realized · native currencies</small>
+<p id="desk-realized" class="metric">—</p>
+<small>Historical average cost, including recorded fees</small>
+</div>
+</div>
+<p class="muted">Realized gains are part of total performance and are shown separately; they are not added to YTD P/L again. A daily result needs consecutive closing snapshots.</p>
+</section>
+<section class="card">
+<h2>Asset contribution &amp; currency contribution</h2>
+<p class="muted">Asset returns stay in their native currency. The currency contribution revalues the whole currency balance: positions, cash and deposits. Amounts below translate both contributions into CZK.</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Currency</th>
+<th>Native asset P/L</th>
+<th>Asset contribution CZK</th>
+<th>Currency contribution CZK</th>
+<th>Total CZK</th>
+</tr>
+</thead>
+<tbody id="desk-currencies">
+</tbody>
+</table>
+</div>
+<details>
+<summary>Cash, deposits and settled derivatives</summary>
+<p class="muted">Cash/deposit income and costs include residual unallocated cash items until reconciliation is complete. Expiry and margin settlements are grouped where UBS does not identify an individual leg.</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Currency</th>
+<th>Grouped derivatives cash result</th>
+<th>Cash/deposits &amp; unallocated items</th>
+<th>FX hedge cash · native</th>
+<th>Internal FX fixing difference CZK</th>
+</tr>
+</thead>
+<tbody id="desk-cash-pnl">
+</tbody>
+</table>
+</div>
+</details>
+</section>
+<section class="card">
+<h2>Trading positions</h2>
+<p class="muted">Carried holdings show price returns against the year-start market price; new holdings use remaining average acquisition cost. Income is included in asset P/L. Cash and deposits are covered in the portfolio totals above.</p>
+<label>Show <select id="desk-position-filter">
+<option value="open">Open positions</option>
+<option value="closed">Closed positions</option>
+<option value="all">All positions</option>
+</select>
+</label>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Instrument / currency</th>
+<th>Quantity</th>
+<th>Native price return</th>
+<th>YTD asset P/L native</th>
+<th>Asset contribution CZK</th>
+<th>Realized native</th>
+<th>Reconciliation</th>
+</tr>
+</thead>
+<tbody id="desk-assets">
+</tbody>
+</table>
+</div>
+</section>
+<section class="card">
+<h2>Positions and P&amp;L as of a date</h2>
+<p class="muted">The platform reconstructs quantities and cash from the year-end UBS statement and dated UBS transactions. Bloomberg supplies historical closing prices, bond accrued interest and FX. A stored UBS snapshot is used when the selected date has one.</p>
+<p><label>As of <input id="history-date" type="date"></label> <button id="history-load">Reconstruct and request Bloomberg data</button></p>
+<p id="history-status" class="tag">Select a date.</p>
+<p id="history-context" class="muted"></p>
+<div class="grid">
+<div><small>Historical net assets · CZK · incl. accrued</small><p id="history-nav" class="metric">—</p></div>
+<div><small>Historical YTD P/L · CZK</small><p id="history-ytd" class="metric">—</p></div>
+</div>
+<div class="scroll"><table><thead><tr><th>Instrument / account</th><th>Currency</th><th>Quantity / balance</th><th>Historical price</th><th>Accrued native</th><th>Historical value</th><th>Status</th></tr></thead><tbody id="history-positions"></tbody></table></div>
+<ul id="history-missing" class="tag"></ul>
+</section>
+<section class="card">
+<h2>Derivatives risk</h2>
+<p id="desk-risk-basis" class="muted">
+</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Option / expiry</th>
+<th>Currency</th>
+<th>Max premium loss from current mark</th>
+<th>Underlying −10% at expiry</th>
+<th>Unchanged at expiry</th>
+<th>Underlying +10% at expiry</th>
+</tr>
+</thead>
+<tbody id="desk-risk">
+</tbody>
+</table>
+</div>
+<ul id="desk-risk-missing" class="muted">
+</ul>
+</section>
+<details class="card">
+<summary>Reconciliation &amp; remaining data</summary>
+<ul id="desk-issues" class="tag">
+</ul>
+<p id="desk-basis" class="muted">
+</p>
+<h3>One-time cash review</h3>
+<p class="muted">External funding means money crossed the selected UBS portfolio boundary. Import both account legs for internal transfers. Classify OTC cash as a trading result or an FX hedge only when its source confirms that purpose.</p>
+<p id="cash-review-message" aria-live="polite">
+</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Date / reference</th>
+<th>Description / bank detail</th>
+<th>Currency</th>
+<th>Net cash</th>
+<th>Owner classification</th>
+</tr>
+</thead>
+<tbody id="desk-cash-review">
+</tbody>
+</table>
+</div>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Cash / deposit</th>
+<th>Currency</th>
+<th>Calculated closing balance</th>
+<th>UBS closing balance</th>
+<th>Difference</th>
+</tr>
+</thead>
+<tbody id="desk-cash-checks">
+</tbody>
+</table>
+</div>
+<p id="desk-pending" class="muted">
+</p>
+</details>
+<section class="card">
+<h2>Trader report export</h2>
+<p class="muted">Open the Trading Overview, then Print / Save PDF, or download CSV. It includes open and closed positions, average-cost realized gains, asset and currency contributions, and the same reconciliation status shown here.</p>
+<details>
+<summary>Other report source / legacy display settings</summary>
+<label>Report source <select id="report-source">
+<option value="ubs">UBS + calculated performance</option>
+<option value="mars">MARS base data</option>
+</select>
+</label> <label>Size currency <input id="report-size" value="EUR" maxlength="3" size="3">
+</label> <label>Unrealized P/L currency <input id="report-pnl" value="CZK" maxlength="3" size="3">
+</label>
+</details>
+<p>
+<button id="report-print">Open printable report / Save as PDF</button> <button id="report-html">Download HTML</button> <button id="report-csv">Download CSV</button>
+</p>
+</section>
+<details class="card" id="source-details">
+<summary>Source records &amp; account activity</summary>
+<section class="card">
+<h2>UBS activity reconciliation</h2>
+<p id="activity-summary" class="tag">No account transaction files imported.</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Account / currency</th>
+<th>Transaction-date coverage</th>
+<th>Cash chain</th>
+<th>Export closing cash</th>
+<th>Snapshot comparison</th>
+</tr>
+</thead>
+<tbody id="activity-accounts">
+</tbody>
+</table>
+</div>
+<p id="activity-fx" class="muted">
+</p>
+<details>
+<summary>Transfers and settlements to review</summary>
+<p class="muted">Transfers require a portfolio-boundary check. OTC payments need their instrument reference.</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Booking date</th>
+<th>Currency</th>
+<th>Net cash</th>
+<th>Type</th>
+<th>Review</th>
+</tr>
+</thead>
+<tbody id="activity-review">
+</tbody>
+</table>
+</div>
+</details>
+<details>
+<summary>Account postings</summary>
+<p>
+<a href="/api/reports/ubs-activity.csv" style="color:#9bd3ff">Export activity review CSV</a>
+</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Trade date</th>
+<th>Booking / value date</th>
+<th>Type / instrument</th>
+<th>ISIN / Valor</th>
+<th>Number/amount · price</th>
+<th>Currency</th>
+<th>Net cash</th>
+<th>Transaction no.</th>
+</tr>
+</thead>
+<tbody id="activity-ledger">
+</tbody>
+</table>
+</div>
+</details>
+<ul id="activity-warnings" class="muted">
+</ul>
+</section>
+</details>
+<details class="card" id="advanced">
+<summary>Connections &amp; advanced tools</summary>
+<p class="muted">Native UBS imports drive the main portfolio accounting. MARS and PTD are audit/reference sources. Manual ledgers and model inputs remain separate.</p>
+<section class="card">
+<h2>Connect your Windows Bloomberg Terminal</h2>
+<p class="muted">Download the worker and a private device configuration into the same folder. The device token uploads quotes and reads the security watchlist; it cannot read account balances or submit orders. Tokens expire after 90 days.</p>
+<p>
+<a href="/bridge/bloomberg_bridge.py" download="bloomberg_bridge.py" style="color:#9bd3ff">Download Windows worker</a>
+</p>
+<button id="create-bridge">Create device & download configuration</button>
+<p id="bridge-message" aria-live="polite">
+</p>
+<p class="muted">In PowerShell, run the worker with --config bbg-bridge-config.json. Keep the configuration private; never send it in chat.</p>
+<div id="bridge-devices">
+</div>
+</section>
+<section class="card">
+<h2>Bloomberg price snapshots</h2>
+<p class="muted">PX_LAST is displayed separately from UBS valuations. Receipt time is not an exchange trade timestamp. ISIN lookup may resolve a different listing; quote currency, listing and bond/option conventions require verification before valuation. Missing-ISIN options need manual mapping.</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Security / ISIN</th>
+<th>PX_LAST</th>
+<th>Quote currency</th>
+<th>Received (UTC)</th>
+<th>Age</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody id="bloomberg-quotes">
+</tbody>
+</table>
+</div>
+</section>
+<section class="card">
+<h2>Portfolio snapshot</h2>
+<p id="valuation" class="tag">No positions imported.</p>
+<div class="grid">
+<div>
+<small>Reported market value</small>
+<p id="value">—</p>
+</div>
+<div>
+<small>Reported accrued interest · separate</small>
+<p id="accrued">—</p>
+</div>
+<div>
+<small>Position count</small>
+<p id="count">—</p>
+</div>
+</div>
+<ul id="warnings" class="muted">
+</ul>
+</section>
+<section class="card">
+<h2>Portfolio valuation &amp; P/L</h2>
+<p id="analytics-date" class="tag">Import a positions snapshot to calculate analytics.</p>
+<div class="grid">
+<div>
+<small>Indicative market value · mixed dates</small>
+<p id="indicative-value">—</p>
+</div>
+<div>
+<small>Estimated change from UBS snapshot · not daily P/L</small>
+<p id="valuation-change">—</p>
+</div>
+<div>
+<small>Snapshot unrealized P/L · cost-covered holdings only</small>
+<p id="snapshot-pnl">—</p>
+</div>
+</div>
+<p id="analytics-coverage" class="muted">
+</p>
+<ul id="analytics-notes" class="muted">
+</ul>
+<h3>Currency allocation</h3>
+<p class="muted">UBS market values in portfolio currency; native cash and deposits are separate. This is denomination allocation, not FX delta exposure.</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Currency</th>
+<th>Net market value</th>
+<th>Gross market value</th>
+<th>Net weight</th>
+<th>Native cash</th>
+<th>Native deposits</th>
+</tr>
+</thead>
+<tbody id="currency-allocation">
+</tbody>
+</table>
+</div>
+<h3>Valuation coverage by holding</h3>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Holding</th>
+<th>UBS value</th>
+<th>Indicative value</th>
+<th>Estimated change</th>
+<th>Snapshot unrealized P/L</th>
+<th>Price receipt (UTC)</th>
+<th>FX receipt (UTC)</th>
+<th>Basis / missing data</th>
+</tr>
+</thead>
+<tbody id="analytics-holdings">
+</tbody>
+</table>
+</div>
+</section>
+<section class="card">
+<h2>Cash account balances</h2>
+<p class="muted">Native currencies. Call deposits are listed separately in holdings; balances are not a measure of available buying power.</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Currency</th>
+<th>Reported balance</th>
+<th>Intraday balance</th>
+</tr>
+</thead>
+<tbody id="cash">
+</tbody>
+</table>
+</div>
+</section>
+<section class="card">
+<h2>Holdings</h2>
+<label>UBS group <select id="filter">
+<option value="">All groups</option>
+</select>
+</label>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Instrument / account</th>
+<th>ISIN / Valor</th>
+<th>Currency</th>
+<th>Quantity / balance</th>
+<th>Market price</th>
+<th>Reported value <span class="base">
+</span>
+</th>
+<th>UBS unrealized P/L %</th>
+</tr>
+</thead>
+<tbody id="holdings">
+</tbody>
+</table>
+</div>
+</section>
+<section class="card">
+<h2>Bloomberg MARS base data</h2>
+<p class="muted">Import the static MARS XLSX. Currency-dependent values, P/L and Greeks are excluded. Identifiers, source positions and contract fields stay separate from UBS holdings. The existing Windows bridge will request these exact tickers to obtain independent prices, currencies and ISINs.</p>
+<form id="mars-upload">
+<input id="mars-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+<p>
+<label>Valuation date <input id="mars-date" type="date" required>
+</label> <label>Report currency setting <input id="mars-currency" placeholder="Unconfirmed" maxlength="3" size="12">
+</label> <label>P/L period setting <input id="mars-period" placeholder="Unconfirmed" maxlength="80">
+</label>
+</p>
+<button id="mars-import" type="submit">Import MARS XLSX</button>
+</form>
+<p id="mars-message" aria-live="polite">
+</p>
+<p id="mars-summary" class="tag">No MARS snapshot imported.</p>
+<ul id="mars-warnings" class="muted">
+</ul>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Group / ticker</th>
+<th>Position display</th>
+<th>Notional · source units</th>
+<th>Export MktPx / CostPx · units unverified</th>
+<th>Strike</th>
+<th>Trade date</th>
+<th>Expiry / delivery</th>
+<th>Underlying</th>
+<th>Independent Bloomberg quote / currency / ISIN</th>
+</tr>
+</thead>
+<tbody id="mars-positions">
+</tbody>
+</table>
+</div>
+<p class="muted">Base records are not yet independently valued: price scales, quantities and contract multipliers require verification. MARS conversion and Greeks are not used for calculations.</p>
+</section>
+<section class="card">
+<h2>Daily &amp; realized P/L · average cost</h2>
+<p class="muted">Separate verified event ledger; KeyTrader summaries are not treated as dated fills. Net amounts include fees. Totals cover imported history only and remain in native currencies.</p>
+<p>
+<a style="color:#9bd3ff" href="/api/templates/performance.csv">Download performance CSV template</a>
+</p>
+<details>
+<summary>How to prepare the event ledger</summary>
+<p>Use ISO dates (YYYY-MM-DD) and unique event_id values. Sequence orders fills on the same date. For each account/security/currency, add one OPENING record before its trades: signed quantity, historical average cost price (including fees), multiplier and zero fees. Use zero quantity/price for a genuinely new position. BUY/SELL quantity is positive; fees are nonnegative, in the same currency. For bonds priced in percent, supply multiplier 0.01 only after verifying nominal units; for options supply the verified contract multiplier.</p>
+<p>INCOME uses net amount. CASHFLOW is an external deposit (positive) or withdrawal (negative), never a trade or dividend. VALUATION uses complete closing account value, including cash, in the stated currency. Leave security/quantity/price/multiplier/fees blank for these records. Consecutive dates produce daily P/L; gaps produce period P/L. Separate accounts/currencies are never silently netted. Repeated event IDs are ignored; conflicting IDs reject the entire file. Edit the source CSV before import; corrections to stored records need a reviewed adjustment workflow.</p>
+</details>
+<form id="performance-upload">
+<input id="performance-file" type="file" accept=".csv,text/csv" required>
+<button id="performance-import" type="submit">Import performance events</button>
+</form>
+<p id="performance-message" aria-live="polite">
+</p>
+<p id="performance-basis" class="muted">
+</p>
+<ul id="performance-warnings" class="tag">
+</ul>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Currency</th>
+<th>Realized · imported history</th>
+<th>YTD realized</th>
+<th>YTD net income</th>
+</tr>
+</thead>
+<tbody id="performance-totals">
+</tbody>
+</table>
+</div>
+<h3>Daily / period P/L</h3>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Account</th>
+<th>From</th>
+<th>To</th>
+<th>Currency</th>
+<th>Basis</th>
+<th>External flows</th>
+<th>P/L</th>
+</tr>
+</thead>
+<tbody id="daily-pnl">
+</tbody>
+</table>
+</div>
+<h3>Realized trade P/L</h3>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Account</th>
+<th>Security</th>
+<th>Closed quantity</th>
+<th>Currency</th>
+<th>P/L · fees included</th>
+</tr>
+</thead>
+<tbody id="realized-pnl">
+</tbody>
+</table>
+</div>
+</section>
+<section class="card">
+<h2>Derivatives risk · verified inputs</h2>
+<p class="muted">European vanilla option Greeks and full spot/volatility scenarios; linear futures delta. Unsupported or missing terms are excluded. Inputs older than 15 minutes are excluded from totals. Model values are separate from UBS valuations.</p>
+<p>
+<a href="/api/templates/risk.csv" style="color:#9bd3ff">Download risk CSV template</a>
+</p>
+<details>
+<summary>Risk input requirements</summary>
+<p>Copy position_id from the holdings identifiers below. kind is european_call, european_put or future. Supply verified underlying, currency, multiplier, spot (futures quote for future), timezone-aware expiry and observed_at, and verified=yes. Options also require strike, volatility (0.25 means 25%), rate and dividend_yield as decimal fractions. American/exotic/structured contracts are not supported. Position quantities come from the dated UBS snapshot. Updating PX_LAST does not refresh volatility or other risk inputs; upload a new verified input set.</p>
+</details>
+<form id="risk-upload">
+<input id="risk-file" type="file" accept=".csv,text/csv" required>
+<button id="risk-import" type="submit">Import verified risk inputs</button>
+</form>
+<p id="risk-message" aria-live="polite">
+</p>
+<p id="risk-basis" class="muted">
+</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Holding / underlying</th>
+<th>Currency</th>
+<th>Status / age</th>
+<th>Delta cash</th>
+<th>Gamma 1% P/L</th>
+<th>Vega 1pp</th>
+<th>Theta/day</th>
+<th>Spot −10%</th>
+<th>Spot +10%</th>
+<th>Vol +5pp</th>
+</tr>
+</thead>
+<tbody id="risk-rows">
+</tbody>
+</table>
+</div>
+<h3>Recent modeled risk totals</h3>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Currency</th>
+<th>Delta cash</th>
+<th>Gamma 1%</th>
+<th>Vega 1pp</th>
+<th>Theta/day</th>
+<th>Spot −10%</th>
+<th>Spot +10%</th>
+</tr>
+</thead>
+<tbody id="risk-totals">
+</tbody>
+</table>
+</div>
+<ul id="risk-missing" class="tag">
+</ul>
+<details>
+<summary>Holding identifiers for risk imports</summary>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Holding</th>
+<th>position_id</th>
+<th>Signed quantity</th>
+<th>Currency</th>
+</tr>
+</thead>
+<tbody id="risk-identifiers">
+</tbody>
+</table>
+</div>
+</details>
+</section>
+<section class="card">
+<h2>Import KeyTrader order history</h2>
+<p class="muted">Completed orders become execution summaries. Working and cancelled orders remain in the import review. Conflicting batches do not change the blotter.</p>
+<form id="orders-upload">
+<input id="orders-file" type="file" accept=".csv,text/csv" required>
+<button id="orders-import" type="submit">Import orders</button>
+</form>
+<p id="orders-upload-status" aria-live="polite">
+</p>
+</section>
+<section class="card">
+<h2>Trade blotter</h2>
+<p id="trade-count" class="tag">No order summaries imported.</p>
+<p class="muted">Order-entry time has unspecified timezone; execution time is unavailable. Summaries are not individual fills. These trades have not been applied to the dated positions snapshot.</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Entered on</th>
+<th>Instrument / ISIN</th>
+<th>Side</th>
+<th>Quantity</th>
+<th>Average price</th>
+<th>Currency</th>
+<th>Account</th>
+<th>Order number</th>
+<th>Record type</th>
+</tr>
+</thead>
+<tbody id="trades">
+</tbody>
+</table>
+</div>
+</section>
+<section class="card">
+<h2>Order import review</h2>
+<p class="muted">Latest 20 file imports. All completed import reports are retained in local storage. Cancelled or working orders are excluded from the blotter; they do not imply an execution.</p>
+<div class="scroll">
+<table>
+<thead>
+<tr>
+<th>Imported (UTC)</th>
+<th>Result</th>
+<th>New summaries</th>
+<th>Already stored</th>
+<th>Review / errors</th>
+</tr>
+</thead>
+<tbody id="order-reviews">
+</tbody>
+</table>
+</div>
+</section>
+</details>
+<p id="error" aria-live="polite">
+</p>
+<p class="muted">Dated UBS valuations · Bloomberg market data · Order execution disabled</p>
+</main>
 <script>
-let state={positions:[],snapshot:null};
+let state={positions:[],snapshot:null},historicalState=null;
 const el=id=>document.getElementById(id);
 const money=value=>value===null||value===undefined?'—':new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(Number(value));
 const amount=value=>value===null||value===undefined?'—':new Intl.NumberFormat(undefined,{maximumFractionDigits:6}).format(Number(value));
 function row(target,values){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td)}target.append(tr)}
 function numericRow(target,values,numeric=[]){row(target,values);const cells=el(target.id).lastElementChild.children;for(const index of numeric){cells[index].classList.add('num');const value=Number(String(values[index]).replace(/[^0-9.-]/g,''));if(Number.isFinite(value)&&values[index]!=='—')cells[index].classList.add(value<0?'negative':'positive')}}
 function renderDeskAssets(){el('desk-assets').replaceChildren();const filter=el('desk-position-filter').value;for(const p of state.accounting?.assets||[]){if(filter==='open'&&!Number(p.quantity)||filter==='closed'&&Number(p.quantity))continue;numericRow(el('desk-assets'),[p.description+' · '+p.currency,money(p.quantity),p.native_price_return_percent===null?'—':money(p.native_price_return_percent)+'%',money(p.ytd_asset_pnl_native),money(p.asset_contribution_czk),money(p.realized_native),p.quantity_status],[1,2,3,4,5])}}
+function renderHistorical(data){historicalState=data;el('history-positions').replaceChildren();el('history-missing').replaceChildren();el('history-status').textContent=data.message||'Historical view unavailable.';el('history-context').textContent='Requested date: '+(data.requested_as_of||'—')+' · Positions/valuation date: '+(data.positions_as_of||'unavailable')+' · Source UBS snapshot: '+(data.source_snapshot_as_of||'none')+' · '+(data.valuation_basis||'');el('history-nav').textContent=money(data.accounting?.nav_czk);el('history-ytd').textContent=money(data.accounting?.ytd_pnl_czk);for(const p of data.positions||[]){const quantity=p.quantity??p.quantity_or_balance;const price=p.price??p.market_price?.value;const accrued=p.accrued_native??p.accrued_interest;const value=p.market_value_native??p.market_value;const missing=p.missing||[];row(el('history-positions'),[p.description,p.currency,amount(quantity),amount(price)+(p.price_convention==='percent'||p.market_price?.convention==='percent'?'%':''),amount(accrued),amount(value),missing.length?missing.join(', '):'Available'])}for(const item of [...(data.missing_market_data||[]),...(data.issues||[]),...(data.accounting?.issues||[])]){const li=document.createElement('li');li.textContent=item;el('history-missing').append(li)}}
+async function loadHistorical(request=false){const day=el('history-date').value;if(!day)return;el('history-load').disabled=true;try{const response=await fetch('/api/positions/history'+(request?'':'?as_of='+encodeURIComponent(day)),request?{method:'POST',headers:{'Content-Type':'application/json','X-Historical-Action':'request'},body:JSON.stringify({as_of:day})}:{});const data=await response.json();if(!response.ok)throw Error(data.error||'Historical reconstruction failed');renderHistorical(data)}catch(error){el('history-status').textContent=error.message}finally{el('history-load').disabled=false}}
+el('history-load').addEventListener('click',()=>loadHistorical(true));
 function renderCashReview(){el('desk-cash-review').replaceChildren();for(const r of state.accounting?.cash_decisions||[]){const tr=document.createElement('tr');for(const value of [r.booking_date+' · '+r.transaction_no,r.description+' · '+r.reference,r.currency,money(r.amount)]){const td=document.createElement('td');td.textContent=value;tr.append(td)}const td=document.createElement('td'),select=document.createElement('select');select.add(new Option('Review needed',''));const choices=r.category==='transfer_review'?[['external_funding','External funding']]:[['asset_settlement','Trading result'],['fx_hedge_settlement','FX hedge result']];for(const [value,label] of choices)select.add(new Option(label,value));select.value=r.decision||'';const button=document.createElement('button');button.textContent=r.decision?'Save change':'Confirm';button.addEventListener('click',async()=>{if(!select.value){el('cash-review-message').textContent='Choose the source-confirmed classification first.';return}button.disabled=true;try{const response=await fetch('/api/accounting/cash-review',{method:'POST',headers:{'Content-Type':'application/json','X-Accounting-Action':'manage'},body:JSON.stringify([{id:r.id,classification:select.value,reason:'Owner confirmed in dashboard: '+select.options[select.selectedIndex].text}])});const result=await response.json();if(!response.ok)throw Error(result.error||'Review could not be saved');el('cash-review-message').textContent='Decision saved; prior decisions remain in the audit history.';await refresh()}catch(error){el('cash-review-message').textContent=error.message;button.disabled=false}});td.append(select,' ',button);tr.append(td);el('desk-cash-review').append(tr)}}
 function renderDesk(){renderCashReview();for(const id of ['desk-currencies','desk-cash-pnl','desk-cash-checks','desk-issues','desk-risk','desk-risk-missing'])el(id).replaceChildren();const a=state.accounting;el('desk-status').textContent=a?.status||'UBS data needed';el('desk-date').textContent=a?.opening_as_of?a.opening_as_of+' → '+a.as_of+' · Closing UBS valuation':'Import the prior year-end statement PDF and current UBS files.';el('desk-nav').textContent=money(a?.nav_czk);el('desk-ytd').textContent=money(a?.ytd_pnl_czk);el('desk-realized').textContent=Object.entries(a?.realized_totals||{}).filter(([,v])=>Number(v)!==0).map(([c,v])=>money(v)+' '+c).join(' / ')||'—';const period=a?.period;el('desk-period-label').textContent=(period?.label||'Daily / period P/L')+' · CZK';el('desk-period').textContent=money(period?.pnl_czk);el('desk-period-date').textContent=period?period.from+' → '+period.to+' · '+period.status:'Needs an earlier closing snapshot';el('desk-basis').textContent=(a?.basis||'')+(a?.activity_confirmations?.length?' Owner-confirmed coverage: '+a.activity_confirmations.map(c=>c.currency+' '+c.from+' to '+c.until+' ('+(c.kind==='no_activity'?'no activity':'no further transactions')+')').join('; ')+'.':'');for(const c of a?.currencies||[]){numericRow(el('desk-currencies'),[c.currency,money(c.native_asset_pnl),money(c.asset_contribution_czk),money(c.currency_contribution_czk),money(c.total_pnl_czk)],[1,2,3,4]);numericRow(el('desk-cash-pnl'),[c.currency,money(c.futures_settlements_native),money(c.cash_deposit_income_costs_native),money(c.fx_hedge_settlements_native),money(c.internal_fx_fixing_difference_czk)],[1,2,3,4])}for(const issue of a?.issues||[]){const li=document.createElement('li');li.textContent=issue;el('desk-issues').append(li)}for(const c of a?.cash_checks||[])numericRow(el('desk-cash-checks'),[c.description,c.currency,money(c.expected),money(c.reported),money(c.difference)],[2,3,4]);el('desk-pending').textContent=(a?.pending_settlements||[]).length+' unsettled transactions identified at the valuation cutoff.';renderDeskAssets();const risk=state.snapshot_risk;el('desk-risk-basis').textContent=risk?.basis||'';for(const p of risk?.rows||[])numericRow(el('desk-risk'),[p.description+' · '+p.expiry,p.currency,money('-'+p.maximum_premium_loss),money(p.expiry_pnl['-0.1']),money(p.expiry_pnl['0']),money(p.expiry_pnl['0.1'])],[2,3,4,5]);if(!risk?.rows.length)row(el('desk-risk'),['No supported option expiry scenarios available.']);for(const p of risk?.uncovered||[]){const li=document.createElement('li');li.textContent=p.description+': '+p.reason;el('desk-risk-missing').append(li)}}
 el('desk-position-filter').addEventListener('change',renderDeskAssets);
@@ -20,7 +711,7 @@ function renderActivity(){for(const id of ['activity-accounts','activity-review'
 function renderPerformance(){const p=state.performance;for(const id of ['performance-totals','daily-pnl','realized-pnl','performance-warnings'])el(id).replaceChildren();el('performance-basis').textContent=p.event_count+' imported events through '+p.as_of+'. '+p.basis;for(const [c,t] of Object.entries(p.totals))row(el('performance-totals'),[c,amount(t.realized),amount(t.ytd_realized),amount(t.ytd_income)]);if(!Object.keys(p.totals).length)row(el('performance-totals'),['Unavailable · import dated records with opening inventory.']);for(const r of [...p.periods].reverse())row(el('daily-pnl'),[r.account,r.from,r.to,r.currency,r.kind+' · '+r.days+' days',amount(r.external_flows),amount(r.amount)]);if(!p.periods.length)row(el('daily-pnl'),['Unavailable · two complete closing valuations required.']);for(const r of [...p.realized].reverse())row(el('realized-pnl'),[r.date,r.account,r.description||r.security,amount(r.quantity),r.currency,amount(r.amount)]);for(const warning of p.warnings){const li=document.createElement('li');li.textContent=warning;el('performance-warnings').append(li)}}
 function renderRisk(){const r=state.risk;for(const id of ['risk-rows','risk-totals','risk-missing','risk-identifiers'])el(id).replaceChildren();el('risk-basis').textContent=r.basis||'Import holdings and verified terms.';for(const p of r.rows)row(el('risk-rows'),[p.description+' / '+p.underlying,p.currency,p.status+' · '+p.age_seconds+'s',amount(p.delta_cash),amount(p.gamma_1pct),amount(p.vega_1pp),amount(p.theta_1day),amount(p.scenarios?.['spot_-10pct']),amount(p.scenarios?.['spot_+10pct']),amount(p.scenarios?.['vol_+5pp'])]);for(const [c,t] of Object.entries(r.totals))row(el('risk-totals'),[c,amount(t.delta_cash),amount(t.gamma_1pct),amount(t.vega_1pp),amount(t.theta_1day),amount(t['spot_-10pct']),amount(t['spot_+10pct'])]);if(!Object.keys(r.totals).length)row(el('risk-totals'),['Unavailable · no recent supported risk inputs.']);for(const p of r.uncovered){const li=document.createElement('li');li.textContent=p.description+': '+p.reason;el('risk-missing').append(li)}for(const p of state.positions.filter(p=>p.kind==='security'))row(el('risk-identifiers'),[p.description,p.id,amount(p.quantity_or_balance),p.currency])}
 function registerDeskUpload(kind){el(kind+'-upload').addEventListener('submit',async event=>{event.preventDefault();const file=el(kind+'-file').files[0];if(!file)return;if(file.size>2*1024*1024){el(kind+'-message').textContent='File exceeds 2 MiB.';return}el(kind+'-import').disabled=true;try{const text=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());const response=await fetch('/api/import/'+kind,{method:'POST',headers:{'Content-Type':'text/csv','X-Import-Format':'desk-'+kind},body:text});const result=await response.json();if(!response.ok)throw Error(result.error||'Import failed');el(kind+'-message').textContent=kind==='performance'?result.added+' new events; '+result.existing+' already stored.':result.count+' risk inputs retained.';await refresh()}catch(e){el(kind+'-message').textContent=e.message}finally{el(kind+'-import').disabled=false}})}
-for(const [id,path] of [['report-print','/reports/trader'],['report-html','/api/reports/trader.html'],['report-csv','/api/reports/trader.csv']])el(id).addEventListener('click',()=>{const params=new URLSearchParams({size_currency:el('report-size').value.toUpperCase(),pnl_currency:el('report-pnl').value.toUpperCase()});const url=el('report-source').value==='mars'?path.replace('trader','mars'):path+'?'+params;if(id==='report-print')window.open(url,'_blank','noopener');else{const a=document.createElement('a');a.href=url;document.body.append(a);a.click();a.remove()}});
+for(const [id,path] of [['report-print','/reports/trader'],['report-html','/api/reports/trader.html'],['report-csv','/api/reports/trader.csv']])el(id).addEventListener('click',()=>{const params=new URLSearchParams({size_currency:el('report-size').value.toUpperCase(),pnl_currency:el('report-pnl').value.toUpperCase()});if(historicalState?.requested_as_of&&el('report-source').value==='ubs')params.set('as_of',historicalState.requested_as_of);const url=el('report-source').value==='mars'?path.replace('trader','mars'):path+'?'+params;if(id==='report-print')window.open(url,'_blank','noopener');else{const a=document.createElement('a');a.href=url;document.body.append(a);a.click();a.remove()}});
 registerDeskUpload('performance');registerDeskUpload('risk');
 function renderMars(){for(const id of ['mars-positions','mars-warnings'])el(id).replaceChildren();const m=state.mars;if(!m){el('mars-summary').textContent='No MARS snapshot imported.';return}el('mars-summary').textContent=m.portfolio+' · '+m.count+' instruments · valued '+(m.as_of||'Unconfirmed')+' · report currency setting '+(m.portfolio_currency||'Unconfirmed')+' · P/L period setting '+(m.pnl_period||'Unconfirmed');for(const warning of m.warnings){const li=document.createElement('li');li.textContent=warning;el('mars-warnings').append(li)}for(const p of m.instruments){const f=p.fields;const q=p.quote;row(el('mars-positions'),[p.group+' / '+p.ticker,f.Position,amount(f.Notional),amount(f.MktPx)+' / '+amount(f.CostPx),amount(f.Strike),f['Trade Date']||'—',(f['Expiry Date']||'—')+' / '+(f['Delivery Date']||'—'),f.Underlying||'—',q?amount(q.price)+' '+(q.currency||'Unspecified')+' / '+(q.isin||'No ISIN')+' · '+(q.stale?'Stale':'Recently received')+' · '+q.observed_at:'Awaiting independent quote'])}}
 el('mars-date').value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
@@ -29,11 +720,12 @@ function updateReportControls(){const mars=el('report-source').value==='mars';el
 el('report-source').addEventListener('change',updateReportControls);
 function renderOrders(){el('trades').replaceChildren();el('order-reviews').replaceChildren();el('trade-count').textContent=state.trades.length+' completed order summaries';for(const t of state.trades){row(el('trades'),[(t.order_entered_at||'—').replace('T',' '),(t.instrument_name||t.security)+' / '+t.security,t.side,amount(t.quantity),amount(t.price),t.currency,t.account,t.external_id,'Order execution summary'])}if(!state.trades.length)row(el('trades'),['No order summaries imported.']);for(const report of state.order_imports){const notes=[...report.review,...report.errors].map(item=>[item.order,item.state,item.reason].filter(Boolean).join(' · ')).join('; ');row(el('order-reviews'),[report.imported_at.replace('T',' '),report.accepted?'Accepted':'Rejected · no changes',report.added,report.existing,notes||'No review items'])}if(!state.order_imports.length)row(el('order-reviews'),['No order imports yet.'])}
 function renderHoldings(){el('holdings').replaceChildren();const group=el('filter').value;for(const p of state.positions.filter(p=>!group||p.group===group)){const price=p.market_price?amount(p.market_price.value)+(p.market_price.convention==='percent'?'%':''): '—';row(el('holdings'),[p.description,p.isin|| (p.valor?'Valor '+p.valor:'—'),p.currency,amount(p.quantity_or_balance),price,amount(p.market_value),p.unrealized_pnl_percent===null?'—':amount(p.unrealized_pnl_percent)+'%'])}}
-async function refresh(){try{const r=await fetch('/api/status');if(!r.ok)throw Error('Status unavailable');state=await r.json();el('bbg').textContent=state.bloomberg;el('ubs').textContent=state.ubs;el('error').textContent='';const s=state.snapshot;el('cash').replaceChildren();el('warnings').replaceChildren();if(s){el('valuation').textContent='Valued '+s.as_of+' · Exported '+s.exported_at.replace('T',' ')+' (timezone unspecified) · '+s.valuation_currency+' · Not live';el('value').textContent=amount(s.summary.market_value)+' '+s.valuation_currency;el('accrued').textContent=amount(s.summary.accrued_interest)+' '+s.valuation_currency;el('count').textContent=s.count;for(const warning of s.warnings){const li=document.createElement('li');li.textContent=warning;el('warnings').append(li)}for(const p of state.positions.filter(p=>p.kind==='cash_account'))row(el('cash'),[p.currency,amount(p.quantity_or_balance),amount(p.intraday_quantity_or_balance)]);for(const item of document.querySelectorAll('.base'))item.textContent='('+s.valuation_currency+')'}const selected=el('filter').value;el('filter').replaceChildren(new Option('All groups',''));for(const group of [...new Set(state.positions.map(p=>p.group))])el('filter').add(new Option(group,group));el('filter').value=selected;renderDesk();renderHoldings();renderOrders();renderBloomberg();renderAnalytics();renderPerformance();renderActivity();renderRisk();renderMars()}catch(e){el('error').textContent='Cannot load dashboard data. Check the local service.'}}
+async function refresh(){try{const r=await fetch('/api/status');if(!r.ok)throw Error('Status unavailable');state=await r.json();el('bbg').textContent=state.bloomberg;el('ubs').textContent=state.ubs;el('error').textContent='';const s=state.snapshot;el('cash').replaceChildren();el('warnings').replaceChildren();if(s){if(!el('history-date').value)el('history-date').value=s.as_of;el('valuation').textContent='Valued '+s.as_of+' · Exported '+s.exported_at.replace('T',' ')+' (timezone unspecified) · '+s.valuation_currency+' · Not live';el('value').textContent=amount(s.summary.market_value)+' '+s.valuation_currency;el('accrued').textContent=amount(s.summary.accrued_interest)+' '+s.valuation_currency;el('count').textContent=s.count;for(const warning of s.warnings){const li=document.createElement('li');li.textContent=warning;el('warnings').append(li)}for(const p of state.positions.filter(p=>p.kind==='cash_account'))row(el('cash'),[p.currency,amount(p.quantity_or_balance),amount(p.intraday_quantity_or_balance)]);for(const item of document.querySelectorAll('.base'))item.textContent='('+s.valuation_currency+')'}const selected=el('filter').value;el('filter').replaceChildren(new Option('All groups',''));for(const group of [...new Set(state.positions.map(p=>p.group))])el('filter').add(new Option(group,group));el('filter').value=selected;renderDesk();renderHoldings();renderOrders();renderBloomberg();renderAnalytics();renderPerformance();renderActivity();renderRisk();renderMars();if(historicalState?.requested_as_of)await loadHistorical()}catch(e){el('error').textContent='Cannot load dashboard data. Check the local service.'}}
 el('filter').addEventListener('change',renderHoldings);
 function registerUpload(formId,fileId,buttonId,messageId,kind){el(formId).addEventListener('submit',async event=>{event.preventDefault();const file=el(fileId).files[0];if(!file)return;if(file.size>2*1024*1024){el(messageId).textContent='File exceeds 2 MiB.';return}el(buttonId).disabled=true;try{const bytes=await file.arrayBuffer();let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch(e){text=new TextDecoder('windows-1252').decode(bytes)}const response=await fetch('/api/import/'+kind,{method:'POST',headers:{'Content-Type':'text/csv','X-Import-Format':'ubs-'+kind},body:text});const result=await response.json();if(!response.ok){await refresh();throw Error(result.error||result.errors?.map(item=>[item.order,item.reason].filter(Boolean).join(': ')).join('; ')||'Import failed')}el(messageId).textContent=kind==='positions'?(result.already_imported?'Already retained':'Imported')+': '+result.count+' positions, valued '+result.as_of+'.':(result.already_imported?'Previously imported. ':'')+result.added+' new summaries, '+result.existing+' already stored, '+result.review.length+' review items.';await refresh()}catch(e){el(messageId).textContent=e.message}finally{el(buttonId).disabled=false}})}
 el('create-bridge').addEventListener('click',async()=>{el('create-bridge').disabled=true;try{const response=await fetch('/api/bridge/token',{method:'POST',headers:{'Content-Type':'application/json','X-Bridge-Action':'manage'},body:JSON.stringify({name:'Windows Terminal'})});const result=await response.json();if(!response.ok)throw Error(result.error||'Device creation failed');const blob=new Blob([JSON.stringify(result.config,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='bbg-bridge-config.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);el('bridge-message').textContent='Private configuration downloaded. Keep it beside the worker. Expires '+result.expires_at.substring(0,10)+'. If the download failed, revoke this device and create another.';await refresh()}catch(e){el('bridge-message').textContent=e.message}finally{el('create-bridge').disabled=false}});
 el('upload').addEventListener('submit',async event=>{event.preventDefault();const files=[...el('file').files];if(!files.length)return;el('import').disabled=true;try{if(files.length>12||files.some(f=>f.size>(f.name.toLowerCase().endsWith('.pdf')?4:2)*1024*1024)||files.reduce((n,f)=>n+f.size,0)>6*1024*1024)throw Error('Select up to 12 files: CSVs under 2 MiB, PDF under 4 MiB, selection under 6 MiB.');const contents=[];for(const file of files){const bytes=await file.arrayBuffer();if(file.name.toLowerCase().endsWith('.pdf')){const data=new Uint8Array(bytes);let binary='';for(let i=0;i<data.length;i+=32768)binary+=String.fromCharCode(...data.subarray(i,i+32768));contents.push({pdf_base64:btoa(binary)});continue}let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch(e){text=new TextDecoder('windows-1252').decode(bytes)}contents.push(text)}const response=await fetch('/api/import/ubs',{method:'POST',headers:{'Content-Type':'application/json','X-Import-Format':'ubs-batch'},body:JSON.stringify({files:contents})});const result=await response.json();if(!response.ok)throw Error(result.error||'Import failed');el('upload-files').replaceChildren();for(let i=0;i<result.files.length;i++){const r=result.files[i],li=document.createElement('li');li.textContent=files[i].name+': '+(r.format==='baseline'?r.count+' opening positions as of '+r.as_of:r.format==='positions'?r.count+' positions as of '+r.as_of:r.added+' new '+r.currency+' postings, '+r.existing+' already stored; '+r.from+' to '+r.until+'; cash reconciled');el('upload-files').append(li)}const opening=result.files.find(r=>r.format==='baseline'),closing=result.files.find(r=>r.format==='positions'),cash=result.files.filter(r=>r.format==='activity');el('upload-status').textContent=[opening?opening.count+' opening positions':null,closing?closing.count+' closing positions · '+closing.as_of:null,cash.length?cash.reduce((n,r)=>n+r.added,0)+' new cash postings, '+cash.reduce((n,r)=>n+r.existing,0)+' already stored':null].filter(Boolean).join(' · ')+'. Review the portfolio checks below.';await refresh()}catch(e){el('upload-status').textContent=e.message}finally{el('import').disabled=false}});
 registerUpload('orders-upload','orders-file','orders-import','orders-upload-status','orders');
 refresh();setInterval(refresh,30000);
-</script></html>
+</script>
+</html>

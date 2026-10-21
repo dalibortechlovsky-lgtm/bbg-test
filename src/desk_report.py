@@ -12,6 +12,15 @@ def desk_csv(data):
              'market_price_native','average_cost_native','market_value_eur','asset_pnl_native','asset_contribution_czk','currency_contribution_czk','total_pnl_czk','realized_native','income_native','status']
     writer.writerow(columns)
     def emit(row):writer.writerow([spreadsheet(row.get(c)) for c in columns])
+    selection=data.get('snapshot_selection') or {}
+    if selection.get('requested_as_of'):
+        emit({'section':'REQUESTED DATE','as_of':selection['requested_as_of'],
+              'description':selection['message'],'status':selection['selection']})
+    source_label='RECONSTRUCTED VALUATION' if selection.get('selection')=='reconstructed' else 'ACTUAL UBS SNAPSHOT'
+    emit({'section':source_label,'as_of':a['as_of'],
+          'description':('Positions and P/L are reconstructed from UBS activity and Bloomberg history.'
+                         if source_label=='RECONSTRUCTED VALUATION' else 'Positions, prices and P/L use this stored UBS valuation date.'),
+          'status':selection.get('selection','latest_snapshot')})
     emit({'section':'BASIS','as_of':a['as_of'],'description':a['basis'],'status':a['status']})
     for confirmation in a.get('activity_confirmations',[]):
         emit({'section':'OWNER ACTIVITY CONFIRMATION','as_of':confirmation['until'],'currency':confirmation['currency'],
@@ -60,6 +69,11 @@ def desk_html(data):
     parts=['''<!doctype html><html lang="en"><meta charset="utf-8"><title>Trader overview</title><style>
 body{font:12px Arial;color:#202020;margin:24px auto;padding:20px;max-width:1100px}h1{color:#777;font-size:24px}h2{font-size:15px;margin-top:25px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{padding:5px 7px;text-align:left;vertical-align:top;border-bottom:1px solid #ddd}.num{text-align:right;white-space:nowrap}.negative{background:#ffc5ca;color:#9c0006}.positive{background:#c6efce;color:#006100}.missing,.notes{color:#666}.notes{font-size:10px;line-height:1.5}.summary{font-size:18px}.group{background:#eee;font-weight:bold}.toolbar{background:#eee;padding:12px}tr{break-inside:avoid}thead{display:table-header-group}@media print{body{padding:0;margin:0;font-size:9px}.toolbar{display:none}td,th{padding:4px}.notes{font-size:8px}@page{size:A4 portrait;margin:10mm}}
 </style><div class="toolbar"><button onclick="window.print()">Print / Save PDF</button></div><h1>Trading Overview</h1>''']
+    selection=data.get('snapshot_selection') or {}
+    if selection.get('requested_as_of'):
+        label='Reconstructed positions and P/L date' if selection.get('selection')=='reconstructed' else 'Actual UBS snapshot and P/L date'
+        parts.append('<p><strong>Requested date: '+e(selection['requested_as_of'])+'</strong><br>'+label+': '+e(a['as_of'])+'</p>')
+        parts.append('<p class="notes">'+e(selection['message'])+'</p>')
     parts.append('<p>UBS portfolio · CZK report · '+e(a['opening_as_of'])+' → '+e(a['as_of'])+'</p><p><strong>'+e(a['status'])+'</strong></p>')
     for confirmation in a.get('activity_confirmations',[]):
         kind='no activity' if confirmation['kind']=='no_activity' else 'no further transactions beyond supplied exports'

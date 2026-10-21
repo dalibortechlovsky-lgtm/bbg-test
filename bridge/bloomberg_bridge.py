@@ -54,15 +54,16 @@ def request_quotes(securities):
 
 
 def request_history(requests):
-    """Read daily FX fixings for requested dates; no account information needed."""
+    """Read requested daily FX or ISIN prices; no account information needed."""
     import blpapi
-    if not isinstance(requests,list) or len(requests)>10:raise ValueError('Invalid historical FX request list')
+    if not isinstance(requests,list) or len(requests)>500:raise ValueError('Invalid historical price request list')
     wanted={r['security']:set(r['dates']) for r in requests}
     if not wanted:return []
     from datetime import date
     import re
     for security,days in wanted.items():
-        if not re.fullmatch('[A-Z]{3}CZK Curncy',security) or not 1<=len(days)<=500:raise ValueError('Invalid historical FX security or dates')
+        supported=(re.fullmatch('[A-Z]{3}CZK Curncy',security) or re.fullmatch('/isin/[A-Z0-9]{12}',security))
+        if not supported or not 1<=len(days)<=500:raise ValueError('Invalid historical security or dates')
         for day in days:
             if date.fromisoformat(day).isoformat()!=day:raise ValueError('Invalid history date')
     options=blpapi.SessionOptions();options.setServerHost('localhost');options.setServerPort(8194)
@@ -72,6 +73,7 @@ def request_history(requests):
         request=session.getService('//blp/refdata').createRequest('HistoricalDataRequest')
         for security in wanted:request.getElement('securities').appendValue(security)
         request.getElement('fields').appendValue('PX_LAST')
+        request.getElement('fields').appendValue('YAS_BOND_ACCRUED')
         days=[day for values in wanted.values() for day in values]
         request.set('startDate',min(days).replace('-',''));request.set('endDate',max(days).replace('-',''))
         request.set('periodicitySelection','DAILY')
@@ -82,7 +84,7 @@ def request_history(requests):
             event=session.nextEvent(1000)
             for message in event:
                 if message.hasElement('responseError') or message.messageType()==blpapi.Name('RequestFailure'):
-                    raise RuntimeError('Bloomberg rejected historical FX request')
+                    raise RuntimeError('Bloomberg rejected historical price request')
                 if not message.hasElement('securityData'):continue
                 row=message.getElement('securityData').toPy()
                 security=row.get('security')
@@ -92,9 +94,14 @@ def request_history(requests):
                     if day not in wanted[security]:continue
                     try:value=Decimal(str(field.get('PX_LAST')))
                     except (InvalidOperation,ValueError,TypeError):continue
-                    if value.is_finite() and value>0:result.append({'security':security,'date':day,'price':str(value)})
+                    if value.is_finite() and value>0:
+                        clean={'security':security,'date':day,'price':str(value)}
+                        try:accrued=Decimal(str(field.get('YAS_BOND_ACCRUED')))
+                        except (InvalidOperation,ValueError,TypeError):accrued=None
+                        if accrued is not None and accrued.is_finite():clean['accrued']=str(accrued)
+                        result.append(clean)
             if event.eventType()==blpapi.Event.RESPONSE:return result
-        raise TimeoutError('Bloomberg historical FX timed out')
+        raise TimeoutError('Bloomberg historical price request timed out')
     finally:session.stop()
 
 
@@ -209,8 +216,8 @@ def main():
                                 for offset in range(0,len(quotes),500):
                                     result=cloud_request(history_config,'history_endpoint',{'quotes':quotes[offset:offset+500]})
                                     accepted+=result['accepted'];existing+=result['existing']
-                                print('Historical FX:',accepted,'new fixings;',existing,'already stored',flush=True)
-                        except Exception as exc:print('Historical FX pending:',type(exc).__name__,flush=True)
+                                print('Historical prices:',accepted,'new values;',existing,'already stored',flush=True)
+                        except Exception as exc:print('Historical prices pending:',type(exc).__name__,flush=True)
                 except urllib.error.HTTPError as exc:
                     print('Watchlist HTTP', exc.code, flush=True)
                 except Exception as exc:

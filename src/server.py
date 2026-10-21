@@ -19,6 +19,8 @@ from .ubs_activity import ActivityStore, activity_csv
 from .accounting import accounting_view
 from .baseline import BaselineStore
 from .snapshot_risk import snapshot_risk
+from .historical_positions import (HistoricalRequestStore, selection as historical_selection,
+                                   view as historical_positions_view)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,13 +40,13 @@ class Handler(BaseHTTPRequestHandler):
     public_origin = None
     quote_store = None
 
-    def performance_state(self,snapshot,bloomberg):
+    def performance_state(self,snapshot,bloomberg,as_of=None):
         manual=PerformanceStore(self.store.path).events() if self.store else []
         ptd=PtdStore(self.store.path).view(snapshot,bloomberg,cash_events=manual) if self.store else None
         activity=ActivityStore(self.store.path).view(snapshot) if self.store else None
         # UBS is the accounting source. Once broker activity is present, PTD
         # remains an independent audit source, never a second execution ledger.
-        performance=calculate_performance(manual)
+        performance=calculate_performance(manual,as_of)
         performance['portfolio_pnl_verified']=False
         if ptd:
             ptd['accounting_status']='Independent audit source; execution versus opening-mark classification must be verified before accounting'
@@ -72,6 +74,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path=urlsplit(self.path).path
+        if path == '/api/positions/history':
+            try:
+                query=parse_qs(urlsplit(self.path).query)
+                values=query.get('as_of',[])
+                if len(values)>1:raise ValueError('Select one historical date')
+                self.reply(historical_positions_view(self.store,values[0] if values else None)
+                           if self.store else {'positions':[],'selection':'no_data'})
+            except ValueError as exc:
+                self.reply({'error':str(exc)},status=400)
+            return
         if path == '/api/reports/ubs-activity.csv':
             activity=ActivityStore(self.store.path).view(self.store.latest()) if self.store else None
             if not activity:
@@ -96,13 +108,20 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in {'/api/reports/trader.html','/api/reports/trader.csv','/reports/trader'}:
             try:
-                snapshot=self.store.latest() if self.store else None
-                bloomberg=self.quote_store.view() if self.quote_store else {'quotes':[]}
-                perf,ptd,activity=self.performance_state(snapshot,bloomberg)
-                risk=derivatives_risk(snapshot,RiskStore(self.store.path).terms() if self.store else [])
                 query=parse_qs(urlsplit(self.path).query)
+                values=query.get('as_of',[])
+                if len(values)>1:raise ValueError('Select one historical date')
+                chosen=historical_selection(self.store,values[0] if values else None) if self.store else None
+                snapshot=(chosen or {}).pop('snapshot',None)
+                if not snapshot:raise ValueError((chosen or {}).get('message','Import holdings before exporting a report'))
+                historical=bool(values)
+                bloomberg=({'status':'Stored UBS snapshot; no current repricing','quotes':[],'devices':[]}
+                           if historical else self.quote_store.view() if self.quote_store else {'quotes':[]})
+                perf,ptd,activity=self.performance_state(snapshot,bloomberg,snapshot['as_of'] if historical else None)
+                risk=derivatives_risk(snapshot,RiskStore(self.store.path).terms() if self.store else [])
                 data=report_data(snapshot,portfolio_analytics(snapshot,bloomberg),perf,risk,
                     query.get('size_currency',['EUR'])[0],query.get('pnl_currency',['CZK'])[0])
+                data['snapshot_selection']=chosen
                 data['ptd']=ptd
                 data['activity']=activity
                 data['accounting']=accounting_view(self.store.path,snapshot) if self.store else None
@@ -168,6 +187,16 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def do_POST(self):
+        if self.path=='/api/positions/history' and self.store:
+            expected=self.public_origin or 'http://'+self.headers.get('Host','')
+            if self.headers.get('X-Historical-Action')!='request' or (self.headers.get('Origin') is not None and self.headers.get('Origin')!=expected):
+                self.reply({'error':'Use the historical positions control'},status=403);return
+            try:
+                payload=self.read_json()
+                if not isinstance(payload,dict) or set(payload)!={'as_of'}:raise ValueError('Select one historical date')
+                self.reply(HistoricalRequestStore(self.store.path).request(payload['as_of']))
+            except (ValueError,UnicodeError) as exc:self.reply({'error':str(exc)},status=400)
+            return
         if self.path=='/api/accounting/cash-review' and self.store:
             expected=self.public_origin or 'http://'+self.headers.get('Host','')
             if self.headers.get('X-Accounting-Action')!='manage' or (self.headers.get('Origin') is not None and self.headers.get('Origin')!=expected):
@@ -285,7 +314,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.reply({'error':'Historical uploads are for the Windows worker'},status=403);return
                 from .history import HistoryStore
                 data=accounting_view(self.store.path)
-                self.reply(HistoryStore(self.store.path).ingest(self.read_json(),data.get('history_requests',[]) if data else [],device,self.quote_store.now()))
+                requested=self.quote_store.watchlist().get('history_requests',[])
+                self.reply(HistoryStore(self.store.path).ingest(self.read_json(),requested,device,self.quote_store.now()))
                 return
             if self.path == '/api/bridge/quotes':
                 device = self.quote_store.authenticate(self.headers.get('Authorization'))
