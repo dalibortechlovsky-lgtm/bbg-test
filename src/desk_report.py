@@ -16,12 +16,15 @@ def desk_csv(data):
     if selection.get('requested_as_of'):
         emit({'section':'REQUESTED DATE','as_of':selection['requested_as_of'],
               'description':selection['message'],'status':selection['selection']})
-    source_label='RECONSTRUCTED VALUATION' if selection.get('selection')=='reconstructed' else 'ACTUAL UBS SNAPSHOT'
+    reconstructed=selection.get('selection','').startswith('reconstructed')
+    source_label='PROVISIONAL RECONSTRUCTED VALUATION' if selection.get('selection')=='reconstructed_provisional' else 'RECONSTRUCTED VALUATION' if reconstructed else 'ACTUAL UBS SNAPSHOT'
     emit({'section':source_label,'as_of':a['as_of'],
           'description':('Positions and P/L are reconstructed from UBS activity and Bloomberg history.'
-                         if source_label=='RECONSTRUCTED VALUATION' else 'Positions, prices and P/L use this stored UBS valuation date.'),
+                         if reconstructed else 'Positions, prices and P/L use this stored UBS valuation date.'),
           'status':selection.get('selection','latest_snapshot')})
     emit({'section':'BASIS','as_of':a['as_of'],'description':a['basis'],'status':a['status']})
+    for notice in selection.get('review_flags',[]):
+        emit({'section':'REVIEW REQUIRED','as_of':a['as_of'],'description':notice,'status':'Provisional input'})
     for confirmation in a.get('activity_confirmations',[]):
         emit({'section':'OWNER ACTIVITY CONFIRMATION','as_of':confirmation['until'],'currency':confirmation['currency'],
               'description':confirmation['from']+' to '+confirmation['until']+'; '+confirmation['kind']+'; '+confirmation['reason'],
@@ -71,10 +74,15 @@ body{font:12px Arial;color:#202020;margin:24px auto;padding:20px;max-width:1100p
 </style><div class="toolbar"><button onclick="window.print()">Print / Save PDF</button></div><h1>Trading Overview</h1>''']
     selection=data.get('snapshot_selection') or {}
     if selection.get('requested_as_of'):
-        label='Reconstructed positions and P/L date' if selection.get('selection')=='reconstructed' else 'Actual UBS snapshot and P/L date'
+        label=('Provisional reconstructed positions and P/L date' if selection.get('selection')=='reconstructed_provisional' else
+               'Reconstructed positions and P/L date' if selection.get('selection')=='reconstructed' else 'Actual UBS snapshot and P/L date')
         parts.append('<p><strong>Requested date: '+e(selection['requested_as_of'])+'</strong><br>'+label+': '+e(a['as_of'])+'</p>')
         parts.append('<p class="notes">'+e(selection['message'])+'</p>')
     parts.append('<p>UBS portfolio · CZK report · '+e(a['opening_as_of'])+' → '+e(a['as_of'])+'</p><p><strong>'+e(a['status'])+'</strong></p>')
+    if selection.get('review_flags'):
+        parts.append('<p class="notes"><strong>Review required:</strong></p><ul class="notes">')
+        for notice in selection['review_flags']:parts.append('<li>'+e(notice)+'</li>')
+        parts.append('</ul>')
     for confirmation in a.get('activity_confirmations',[]):
         kind='no activity' if confirmation['kind']=='no_activity' else 'no further transactions beyond supplied exports'
         parts.append('<p class="notes">Owner-confirmed coverage: '+e(confirmation['currency']+' · '+confirmation['from']+' to '+confirmation['until']+' · '+kind)+'. '+e(confirmation['reason'])+'</p>')

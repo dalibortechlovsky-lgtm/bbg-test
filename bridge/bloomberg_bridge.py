@@ -61,8 +61,10 @@ def request_history(requests):
     if not wanted:return []
     from datetime import date
     import re
+    option=re.compile(r'[A-Z0-9]{1,8} [A-Z]{2} \d{2}/\d{2}/\d{2} [CP]\d+(?:\.\d+)? (?:Equity|Index)')
     for security,days in wanted.items():
-        supported=(re.fullmatch('[A-Z]{3}CZK Curncy',security) or re.fullmatch('/isin/[A-Z0-9]{12}',security))
+        supported=(re.fullmatch('[A-Z]{3}CZK Curncy',security) or
+                   re.fullmatch('/isin/[A-Z0-9]{12}',security) or option.fullmatch(security))
         if not supported or not 1<=len(days)<=500:raise ValueError('Invalid historical security or dates')
         for day in days:
             if date.fromisoformat(day).isoformat()!=day:raise ValueError('Invalid history date')
@@ -80,7 +82,7 @@ def request_history(requests):
         request.set('periodicitySelection','DAILY')
         request.set('nonTradingDayFillOption','ALL_CALENDAR_DAYS')
         request.set('nonTradingDayFillMethod','PREVIOUS_VALUE')
-        session.sendRequest(request);result=[];deadline=time.monotonic()+30
+        session.sendRequest(request);result=[];deadline=time.monotonic()+30;complete=False
         while time.monotonic()<deadline:
             event=session.nextEvent(1000)
             for message in event:
@@ -88,7 +90,9 @@ def request_history(requests):
                     raise RuntimeError('Bloomberg rejected historical price request')
                 if not message.hasElement('securityData'):continue
                 row=message.getElement('securityData').toPy()
-                security=row.get('security')
+                sequence=row.get('sequenceNumber')
+                security=(list(wanted)[sequence] if isinstance(sequence,int) and 0<=sequence<len(wanted)
+                          else row.get('security'))
                 if security not in wanted or row.get('securityError'):continue
                 for field in row.get('fieldData',[]):
                     day=str(field.get('date'))[:10]
@@ -101,8 +105,41 @@ def request_history(requests):
                         except (InvalidOperation,ValueError,TypeError):accrued=None
                         if accrued is not None and accrued.is_finite():clean['accrued']=str(accrued)
                         result.append(clean)
-            if event.eventType()==blpapi.Event.RESPONSE:return result
-        raise TimeoutError('Bloomberg historical price request timed out')
+            if event.eventType()==blpapi.Event.RESPONSE:
+                complete=True;break
+        if not complete:raise TimeoutError('Bloomberg historical price request timed out')
+        # INT_ACC is often reference-only. Ask Bloomberg for the same dated
+        # settlement value and merge it without changing the historical price.
+        missing={(r['security'],r['date']) for r in result
+                 if r['security'].startswith('/isin/') and 'accrued' not in r}
+        for day in sorted({d for _,d in missing}):
+            securities=sorted(s for s,d in missing if d==day)
+            if not securities:continue
+            try:
+                accrued_request=session.getService('//blp/refdata').createRequest('ReferenceDataRequest')
+                for security in securities:accrued_request.getElement('securities').appendValue(security)
+                accrued_request.getElement('fields').appendValue('INT_ACC')
+                override=accrued_request.getElement('overrides').appendElement()
+                override.setElement('fieldId','SETTLE_DT');override.setElement('value',day.replace('-',''))
+                session.sendRequest(accrued_request);deadline=time.monotonic()+20;values={}
+                while time.monotonic()<deadline:
+                    event=session.nextEvent(1000)
+                    for message in event:
+                        if not message.hasElement('securityData'):continue
+                        data=message.getElement('securityData')
+                        for i in range(data.numValues()):
+                            row=data.getValueAsElement(i).toPy();sequence=row.get('sequenceNumber')
+                            security=(securities[sequence] if isinstance(sequence,int) and 0<=sequence<len(securities)
+                                      else row.get('security'))
+                            try:value=Decimal(str(row.get('fieldData',{}).get('INT_ACC')))
+                            except (InvalidOperation,ValueError,TypeError):continue
+                            if security in securities and value.is_finite():values[security]=value
+                    if event.eventType()==blpapi.Event.RESPONSE:break
+                for row in result:
+                    if row['date']==day and row['security'] in values:row['accrued']=str(values[row['security']])
+            except Exception:
+                pass  # PX_LAST remains usable; the dashboard keeps accrued flagged for review.
+        return result
     finally:session.stop()
 
 

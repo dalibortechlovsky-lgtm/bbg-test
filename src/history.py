@@ -3,9 +3,9 @@ from datetime import date
 from decimal import Decimal
 import json
 from pathlib import Path
-import re
 import sqlite3
 from .performance import dec
+from .historical_terms import supported_market_security
 
 
 class HistoryStore:
@@ -47,9 +47,8 @@ class HistoryStore:
                     ({'security','date','price'},{'security','date','price','accrued'})):
                 raise ValueError('Invalid historical quote fields')
             sec,day=row['security'],row['date']
-            supported=(isinstance(sec,str) and
-                       (re.fullmatch('[A-Z]{3}CZK Curncy',sec) or re.fullmatch('/isin/[A-Z0-9]{12}',sec)))
-            if not supported:raise ValueError('Only requested CZK FX or ISIN price history is supported')
+            if not supported_market_security(sec):
+                raise ValueError('Only requested CZK FX, ISIN or audited option price history is supported')
             if not isinstance(day,str) or date.fromisoformat(day).isoformat()!=day:raise ValueError('Historical date must be YYYY-MM-DD')
             price=dec(row['price'],'historical price')
             if not Decimal('0.00000001')<=price<=Decimal('100000000'):raise ValueError('Historical price outside supported range')

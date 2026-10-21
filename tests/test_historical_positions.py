@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from src.baseline import BaselineStore
 from src.history import HistoryStore
 from src.historical_positions import HistoricalRequestStore, _metadata, _scale, reconstruct, selection, view
+from src.historical_terms import HistoricalTermsStore
 from src.storage import SnapshotStore
 from src.server import create_server
 from src.ubs_activity import ActivityStore
@@ -54,6 +55,23 @@ class HistoricalPositionTests(unittest.TestCase):
         self.assertEqual(Decimal(security['quantity']),2)
         self.assertEqual(Decimal(cash['quantity']),29)
         self.assertEqual(Decimal(result['snapshot']['summary']['market_value']),Decimal(209)*21)
+
+    def test_source_price_proxy_is_visible_and_provisional(self):
+        requests=[{'security':'USDCZK Curncy','dates':['2026-01-02']}]
+        HistoryStore(self.db).ingest({'quotes':[{'security':'USDCZK Curncy','date':'2026-01-02','price':'21'}]},requests)
+        result=view(SnapshotStore(self.db),'2026-01-02')
+        self.assertEqual(result['selection'],'reconstructed_provisional')
+        self.assertIsNotNone(result['accounting']['ytd_pnl_czk'])
+        self.assertTrue(result['accounting']['provisional'])
+        self.assertTrue(any('Review required' in item for item in result['review_flags']))
+
+    def test_audited_option_terms_are_immutable(self):
+        store=HistoricalTermsStore(self.db)
+        row={'key':'VALOR:123','security':'SPX US 09/18/26 P7400 Index','unit_scale':'100',
+             'basis':'Exact UBS/PTD date, side, quantity and price match.','review_required':False}
+        self.assertEqual(store.record([row]),{'added':1,'existing':0})
+        self.assertEqual(store.record([row]),{'added':0,'existing':1})
+        with self.assertRaises(ValueError):store.record([row|{'unit_scale':'10'}])
 
     def test_request_is_auditable_and_idempotent(self):
         store=HistoricalRequestStore(self.db)

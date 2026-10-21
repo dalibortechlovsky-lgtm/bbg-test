@@ -1,5 +1,6 @@
 """Reconstruct dated UBS holdings and value them with immutable Bloomberg history."""
 from collections import defaultdict
+import calendar
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
@@ -10,6 +11,7 @@ from .accounting import (accounting_view, closing_positions, is_future, matched_
                          signed_quantity, source_key)
 from .baseline import BaselineStore
 from .history import HistoryStore
+from .historical_terms import HistoricalTermsStore
 from .lifecycle import LifecycleStore
 from .ubs_activity import ActivityStore
 
@@ -75,8 +77,8 @@ def _metadata(path,baseline):
     for p in (latest or {}).get('positions',[]):
         key=_key(p)
         if key:
-            result[key]=p|({'verified_unit_scale':str(verified[key])}
-                           if verified.get(key) is not None else {})
+            result[key]=p|{'_snapshot_as_of':latest['as_of'],'_accrued_native':p.get('accrued_interest')}|(
+                {'verified_unit_scale':str(verified[key])} if verified.get(key) is not None else {})
     for p in baseline['positions']:
         if p['kind']=='security' and p['key'] not in result:
             result[p['key']]={'isin':p.get('isin'),'valor':p.get('valor'),'product':p['key'],
@@ -94,6 +96,77 @@ def _scale(position,baseline_position=None):
     return None
 
 
+def _linear_value(points,requested):
+    """Return a source-point interpolation/proxy and its review description."""
+    unique={day:D(value) for day,value in points if value is not None}
+    if not unique:return None,None
+    if requested in unique:return unique[requested],'Source price on the selected date is not a closing valuation.'
+    before=[day for day in unique if day<requested];after=[day for day in unique if day>requested]
+    if before and after:
+        left=max(before);right=min(after);span=(_date(right)-_date(left)).days
+        weight=D((_date(requested)-_date(left)).days)/D(span)
+        value=unique[left]+(unique[right]-unique[left])*weight
+        return value,f'Linear price estimate between source values dated {left} and {right}.'
+    day=max(before) if before else min(after)
+    return unique[day],f'Stale price proxy from {day}; no source value brackets the selected date.'
+
+
+def _price_proxy(key,requested,opening,source,records):
+    points=[]
+    base=opening.get(key)
+    if base and base.get('market_price') is not None:points.append((base.get('as_of') or '',base['market_price']))
+    for row in records:
+        if source_key(row)==key and row.get('price') is not None and row.get('trade_date'):
+            points.append((row['trade_date'],row['price']))
+    market=source.get('market_price')
+    if isinstance(market,dict):market=market.get('value')
+    if market is not None and source.get('_snapshot_as_of'):points.append((source['_snapshot_as_of'],market))
+    return _linear_value([(day,value) for day,value in points if day],requested)
+
+
+def _activity_scale(key,records):
+    candidates=[]
+    for row in records:
+        if source_key(row)!=key or row.get('price') is None or row.get('quantity') is None or row.get('amount') is None:continue
+        quantity=abs(D(row['quantity']));price=abs(D(row['price']))
+        if not quantity or not price:continue
+        ratio=abs(D(row['amount']))/quantity/price;integer=ratio.to_integral_value()
+        if integer>1 and abs(ratio-integer)/integer<=D('0.02'):candidates.append(integer)
+    if candidates and len(set(candidates))==1:return candidates[0]
+    return None
+
+
+def _shift_month(day,months):
+    month=day.month-1+months;year=day.year+month//12;month=month%12+1
+    return date(year,month,min(day.day,calendar.monthrange(year,month)[1]))
+
+
+def _coupon_accrued(source,requested):
+    description=source.get('description','')
+    rate=re.search(r'(\d+(?:\.\d+)?)%',description);maturity=re.search(r'(\d{2})\.(\d{2})\.(\d{4})',description)
+    if not rate or not maturity:return None
+    anchor=date(int(maturity[3]),int(maturity[2]),int(maturity[1]));cutoff=_date(requested)
+    candidates=[]
+    for offset in range(-80,20):candidates.append(_shift_month(anchor,offset*6))
+    previous=max(d for d in candidates if d<=cutoff);following=min(d for d in candidates if d>cutoff)
+    return D(rate[1])/D(2)*D((cutoff-previous).days)/D((following-previous).days)
+
+
+def _accrued_proxy(key,requested,opening,source,quantity):
+    if 'ETF' in source.get('description','').upper() or 'ISHARES' in source.get('description','').upper():
+        return ZERO,None
+    calculated=_coupon_accrued(source,requested)
+    if calculated is not None:
+        return calculated,'Accrued interest estimated from the stated coupon and semiannual maturity schedule.'
+    points=[];base=opening.get(key)
+    if base and base.get('accrued_native') is not None and quantity:
+        points.append((base.get('as_of') or '',D(base['accrued_native'])/abs(quantity)/D('0.01')))
+    latest=source.get('_accrued_native')
+    if latest is not None and quantity:points.append((source.get('_snapshot_as_of'),D(latest)/abs(quantity)/D('0.01')))
+    value,reason=_linear_value([(day,value) for day,value in points if day],requested)
+    return value,(None if reason is None else reason.replace('price','accrued-interest'))
+
+
 def reconstruct(path,requested,require_market_data=True):
     """Rebuild quantities and balances at a cutoff; never borrow later quantities."""
     cutoff=_date(requested)
@@ -101,14 +174,14 @@ def reconstruct(path,requested,require_market_data=True):
     baseline=BaselineStore(path).latest(requested)
     if not baseline:
         return {'snapshot':None,'positions':[],'issues':['No prior year-end UBS statement supports this date.'],
-                'missing_market_data':[],'market_requests':[],'source_snapshot_as_of':None,
+                'missing_market_data':[],'review_flags':[],'market_requests':[],'source_snapshot_as_of':None,
                 'metadata_snapshot_as_of':None}
     from .storage import SnapshotStore
     prior_snapshot=SnapshotStore(path).at_or_before(requested)
     activity=ActivityStore(path).view()
     records=[r for r in (activity or {}).get('ledger',[]) if r['trade_date']<=requested or r['booking_date']<=requested]
     retired=matched_reversals(records);metadata,latest=_metadata(path,baseline)
-    opening={p['key']:p for p in baseline['positions'] if p['kind']=='security'}
+    opening={p['key']:p|{'as_of':baseline['as_of']} for p in baseline['positions'] if p['kind']=='security'}
     quantities={key:D(p['quantity']) for key,p in opening.items()}
     descriptions={key:p['description'] for key,p in opening.items()};currencies={key:p['currency'] for key,p in opening.items()}
     issues=[]
@@ -131,20 +204,35 @@ def reconstruct(path,requested,require_market_data=True):
         later=[r for r in trades if source_key(r)==key and r['trade_date']>confirmation['settled_by']]
         if later:issues.append(key+': executions after settlement confirmation require review')
         elif key in quantities:quantities[key]=ZERO
-    observations=HistoryStore(path).observations();market_requests=defaultdict(set);missing=[];positions=[];fx={};active=set()
+    observations=HistoryStore(path).observations();terms=HistoricalTermsStore(path).all()
+    market_requests=defaultdict(set);missing=[];reviews=[];positions=[];fx={};active=set()
     for key,quantity in sorted(quantities.items()):
         if not quantity:continue
-        source=metadata.get(key,{});currency=currencies.get(key) or source.get('currency');active.add(currency)
+        source=metadata.get(key,{});term=terms.get(key,{});currency=currencies.get(key) or source.get('currency');active.add(currency)
         isin=source.get('isin') or (key if re.fullmatch('[A-Z0-9]{12}',key) else None);security='/isin/'+isin if isin else None
+        if term.get('security'):security=term['security']
         if security:market_requests[security].add(requested)
-        observation=observations.get((security,requested)) if security else None;base=opening.get(key);scale=_scale(source,base)
+        observation=observations.get((security,requested)) if security else None;base=opening.get(key)
+        scale=D(term['unit_scale']) if term.get('unit_scale') is not None else _scale(source,base)
+        if scale is None:
+            scale=_activity_scale(key,records)
+            if scale is not None:reviews.append(key+f': Review required — contract multiplier {scale} inferred from UBS net settlements.')
         bond=source.get('group','').startswith('Bonds');absent=[]
         if not security:absent.append('Bloomberg identifier mapping')
-        if not observation:absent.append('Bloomberg PX_LAST')
+        price=observation['price'] if observation else None
+        if price is None:
+            price,reason=_price_proxy(key,requested,opening,source,records)
+            if price is None:absent.append('Bloomberg PX_LAST')
+            else:reviews.append(key+': Review required — '+reason)
         if scale is None:absent.append('verified contract multiplier')
-        if bond and (not observation or observation['accrued'] is None):absent.append('Bloomberg YAS_BOND_ACCRUED')
+        accrued=observation['accrued'] if observation else None
+        if bond and accrued is None:
+            accrued,reason=_accrued_proxy(key,requested,opening,source,quantity)
+            if accrued is None:absent.append('Bloomberg accrued interest')
+            elif reason:reviews.append(key+': Review required — '+reason)
+        if term.get('review_required'):
+            reviews.append(key+': Review required — '+term['basis'])
         if absent:missing.append(key+': '+', '.join(absent))
-        price=observation['price'] if observation else None;accrued=observation['accrued'] if observation else None
         native=quantity*price*scale if price is not None and scale is not None else None
         accrued_native=quantity*accrued*D('0.01') if bond and accrued is not None else ZERO if not bond else None
         positions.append({'key':key,'kind':'security','group':source.get('group','Reconstructed securities'),
@@ -152,7 +240,8 @@ def reconstruct(path,requested,require_market_data=True):
             'product':source.get('product',key),'currency':currency,'quantity':str(quantity),
             'price':None if price is None else str(price),'price_convention':'percent' if bond else 'amount',
             'scale':None if scale is None else str(scale),'accrued_native':None if accrued_native is None else str(accrued_native),
-            'market_value_native':None if native is None else str(native),'missing':absent})
+            'market_value_native':None if native is None else str(native),'missing':absent,
+            'review_required':[r for r in reviews if r.startswith(key+':')]})
     for item in [p for p in baseline['positions'] if p['kind']=='cash_account']:
         account=item['iban'];currency=item['currency'];active.add(currency)
         balance=D(item['quantity'])+sum((D(r['amount']) for r in records if r['account']==account and baseline['as_of']<r['booking_date']<=requested),ZERO)
@@ -201,7 +290,7 @@ def reconstruct(path,requested,require_market_data=True):
             'count':len(synthetic),'positions':synthetic,'exchange_rates':fx,
             'summary':{'market_value':str(market),'accrued_interest':str(accrued_total),'cash_balances':{},'groups':{}},
             'warnings':['Reconstructed from the prior year-end UBS statement, dated UBS activity, and Bloomberg historical market data.']}
-    return {'snapshot':snapshot,'positions':positions,'issues':sorted(set(issues)),
+    return {'snapshot':snapshot,'positions':positions,'issues':sorted(set(issues)),'review_flags':sorted(set(reviews)),
         'missing_market_data':sorted(set(missing)),
         'market_requests':[{'security':s,'dates':sorted(days)} for s,days in sorted(market_requests.items())],
         'source_snapshot_as_of':(prior_snapshot or {}).get('as_of'),
@@ -215,20 +304,22 @@ def selection(store,requested=None):
         return {'requested_as_of':None,'positions_as_of':actual,'snapshot_as_of':actual,
             'selection':'latest_snapshot' if snapshot else 'no_data','available_dates':dates,
             'message':'Showing the latest stored UBS snapshot dated '+actual+'.' if snapshot else 'No UBS positions snapshot has been imported.',
-            'snapshot':snapshot,'source_snapshot_as_of':actual,'missing_market_data':[],'issues':[]}
+            'snapshot':snapshot,'source_snapshot_as_of':actual,'missing_market_data':[],'issues':[],'review_flags':[]}
     _date(requested);exact=store.at_or_before(requested)
     if exact and exact['as_of']==requested:
         return {'requested_as_of':requested,'positions_as_of':requested,'snapshot_as_of':requested,
             'selection':'exact_snapshot','available_dates':dates,'message':'Showing the stored UBS snapshot for '+requested+'.',
-            'snapshot':exact,'source_snapshot_as_of':requested,'missing_market_data':[],'issues':[]}
+            'snapshot':exact,'source_snapshot_as_of':requested,'missing_market_data':[],'issues':[],'review_flags':[]}
     rebuilt=reconstruct(store.path,requested);available=rebuilt['snapshot'] is not None
+    provisional=available and bool(rebuilt['review_flags'])
     return {'requested_as_of':requested,'positions_as_of':requested,'snapshot_as_of':requested if available else None,
-        'selection':'reconstructed' if available else 'reconstruction_pending','available_dates':dates,
-        'message':('Reconstructed positions and valuation for '+requested+' from UBS activity and Bloomberg history.' if available else
+        'selection':'reconstructed_provisional' if provisional else 'reconstructed' if available else 'reconstruction_pending','available_dates':dates,
+        'message':(('Provisional reconstructed positions and P/L for '+requested+'; flagged estimates require review.') if provisional else
+            'Reconstructed positions and valuation for '+requested+' from UBS activity and Bloomberg history.' if available else
             'Positions were reconstructed for '+requested+'; Bloomberg history or verified terms are still missing.'),
         'snapshot':rebuilt['snapshot'],'source_snapshot_as_of':rebuilt['source_snapshot_as_of'],
         'metadata_snapshot_as_of':rebuilt['metadata_snapshot_as_of'],
-        'missing_market_data':rebuilt['missing_market_data'],'issues':rebuilt['issues'],
+        'missing_market_data':rebuilt['missing_market_data'],'issues':rebuilt['issues'],'review_flags':rebuilt['review_flags'],
         'reconstructed_positions':rebuilt['positions'],'market_requests':rebuilt['market_requests']}
 
 
@@ -238,9 +329,15 @@ def view(store,requested=None):
         'positions':result.pop('reconstructed_positions',[]),'accounting':None,
         'valuation_basis':'Quantities and cash are reconstructed; total P/L waits for all required historical market inputs.'}
     positions=[{k:v for k,v in row.items() if k!='raw'} for row in snapshot['positions']]
+    accounting=accounting_view(store.path,snapshot)
+    if result.get('review_flags') and accounting:
+        accounting=dict(accounting);accounting['status']='Provisional historical valuation · review required'
+        accounting['provisional']=True;accounting['issues']=list(accounting.get('issues',[]))+result['review_flags']
     return result|{'exported_at':snapshot['exported_at'],'valuation_currency':snapshot['valuation_currency'],
-        'summary':snapshot['summary'],'positions':positions,'accounting':accounting_view(store.path,snapshot),
+        'summary':snapshot['summary'],'positions':positions,'accounting':accounting,
         'valuation_basis':('Stored UBS quantities, prices, accrued interest and FX.' if result['selection']=='exact_snapshot' else
+        'Prior year-end UBS statement plus dated UBS transactions; available Bloomberg history and explicitly flagged source-data estimates.'
+        if result['selection']=='reconstructed_provisional' else
         'Prior year-end UBS statement plus dated UBS transactions; Bloomberg PX_LAST, bond accrued interest and FX at the selected date.')}
 
 
