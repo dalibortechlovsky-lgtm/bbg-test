@@ -36,6 +36,7 @@ PAYMENTS = {'credit', 'SEPA Credit', 'Special payment order'}
 FX = {'Purchase FX Spot', 'Sale FX Spot', 'Purchase FX Forward', 'Sale FX Forward'}
 NUMBER = r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)'
 REFERENCE_FIELDS = {'valor', 'source_multiplier', 'source_expiry', 'source_strike', 'source_strike_currency'}
+FX_OPTIONAL_TERMS = {'quantity', 'quantity_currency', 'price', 'price_currency', 'price_convention'}
 
 
 def digest(value):
@@ -209,6 +210,16 @@ def economic_record(row):
     return {k: v for k, v in row.items() if k not in {'raw', 'reported_balance'} | REFERENCE_FIELDS}
 
 
+def equivalent_record(previous,record):
+    candidate=dict(record)
+    # UBS sometimes omits FX quotation details in a later overlapping export.
+    # Preserve the original proof; changed non-empty terms/cash/dates still fail.
+    if previous['category']==record['category']=='fx_conversion':
+        for key in FX_OPTIONAL_TERMS:
+            if candidate.get(key) is None:candidate[key]=previous.get(key)
+    return {k:v for k,v in previous.items() if k!='description'}=={k:v for k,v in candidate.items() if k!='description'}
+
+
 class ActivityStore:
     def __init__(self, path): self.path = Path(path)
 
@@ -258,13 +269,15 @@ class ActivityStore:
                     results.append({'format': kind, 'count': item['count'], 'as_of': item['as_of'],
                                     'already_imported': cursor.rowcount == 0})
                     continue
-                added = 0
+                added = 0;retained_details = 0
                 for row in item['rows']:
                     record = economic_record(row)
                     prior = db.execute('SELECT payload FROM ubs_activity_records WHERE id=?', (row['id'],)).fetchone()
                     previous = json.loads(prior[0]) if prior else None
-                    if previous and {k: v for k, v in previous.items() if k != 'description'} != {k: v for k, v in record.items() if k != 'description'}:
+                    if previous and not equivalent_record(previous,record):
                         raise ValueError('Changed UBS transaction component; batch rejected. Review the broker correction.')
+                    if previous and any(previous.get(k) is not None and record.get(k) is None for k in FX_OPTIONAL_TERMS) and record['category']=='fx_conversion':
+                        retained_details+=1
                     if not prior:
                         db.execute('INSERT INTO ubs_activity_records VALUES (?, ?)', (row['id'], json.dumps(record)))
                         added += 1
@@ -274,6 +287,7 @@ class ActivityStore:
                                 'existing': item['count'] - added, 'currency': item['currency'],
                                 'from': item['from'], 'until': item['until'],
                                 'closing_balance': item['closing_balance'], 'balance_chain': item['balance_chain'],
+                                'prior_fx_details_retained':retained_details,
                                 'already_imported': cursor.rowcount == 0})
             from .baseline import portfolio_identity
             portfolios={portfolio_identity(json.loads(r[0])['portfolio']) for r in db.execute('SELECT payload FROM snapshots')}

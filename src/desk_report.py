@@ -13,6 +13,10 @@ def desk_csv(data):
     writer.writerow(columns)
     def emit(row):writer.writerow([spreadsheet(row.get(c)) for c in columns])
     emit({'section':'BASIS','as_of':a['as_of'],'description':a['basis'],'status':a['status']})
+    for confirmation in a.get('activity_confirmations',[]):
+        emit({'section':'OWNER ACTIVITY CONFIRMATION','as_of':confirmation['until'],'currency':confirmation['currency'],
+              'description':confirmation['from']+' to '+confirmation['until']+'; '+confirmation['kind']+'; '+confirmation['reason'],
+              'status':'Owner statement; original UBS export preserved'})
     bridge=a.get('nav_bridge',{})
     for title,key in [('OPENING NAV','opening_nav_czk'),('CLOSING NAV','closing_nav_czk'),
                       ('NET EXTERNAL FUNDING','net_external_flows_czk')]:
@@ -57,6 +61,9 @@ def desk_html(data):
 body{font:12px Arial;color:#202020;margin:24px auto;padding:20px;max-width:1100px}h1{color:#777;font-size:24px}h2{font-size:15px;margin-top:25px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{padding:5px 7px;text-align:left;vertical-align:top;border-bottom:1px solid #ddd}.num{text-align:right;white-space:nowrap}.negative{background:#ffc5ca;color:#9c0006}.positive{background:#c6efce;color:#006100}.missing,.notes{color:#666}.notes{font-size:10px;line-height:1.5}.summary{font-size:18px}.group{background:#eee;font-weight:bold}.toolbar{background:#eee;padding:12px}tr{break-inside:avoid}thead{display:table-header-group}@media print{body{padding:0;margin:0;font-size:9px}.toolbar{display:none}td,th{padding:4px}.notes{font-size:8px}@page{size:A4 portrait;margin:10mm}}
 </style><div class="toolbar"><button onclick="window.print()">Print / Save PDF</button></div><h1>Trading Overview</h1>''']
     parts.append('<p>UBS portfolio · CZK report · '+e(a['opening_as_of'])+' → '+e(a['as_of'])+'</p><p><strong>'+e(a['status'])+'</strong></p>')
+    for confirmation in a.get('activity_confirmations',[]):
+        kind='no activity' if confirmation['kind']=='no_activity' else 'no further transactions beyond supplied exports'
+        parts.append('<p class="notes">Owner-confirmed coverage: '+e(confirmation['currency']+' · '+confirmation['from']+' to '+confirmation['until']+' · '+kind)+'. '+e(confirmation['reason'])+'</p>')
     parts.append('<table class="summary"><tr><th>Net asset value CZK · incl. accrued interest</th>'+cell(a.get('nav_czk'),highlight=False)+'</tr><tr><th>YTD P/L CZK</th>'+cell(a['ytd_pnl_czk'])+'</tr></table>')
     bridge=a.get('nav_bridge')
     if bridge:

@@ -245,3 +245,17 @@ can be assigned to asset performance or FX hedging; hedge cash moves between the
 two contributions without changing total P/L. Decisions are saved with timestamps
 in an append-only audit history; changing a decision preserves the earlier version.
 Unknown boundaries and missing settlement liabilities withhold headline totals.
+
+## Owner activity confirmations
+
+When an account has no activity, or an export stops before the valuation date,
+an explicit owner statement can cover the exact account and missing period.
+These statements are stored separately from the original UBS exports, checked
+against retained transactions, and shown in dashboard/report coverage. A later
+contradictory transaction invalidates that coverage without deleting the audit.
+Zero cash alone never proves no activity; cash and quantities must still reconcile.
+
+Overlapping FX conversion exports sometimes omit optional quantity/quote terms.
+When every economic posting field is unchanged and incoming optional terms are
+blank, the importer preserves earlier verified terms and retains both raw exports.
+Changed nonempty terms, dates or money still require correction review.

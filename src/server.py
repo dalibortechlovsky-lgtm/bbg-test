@@ -27,7 +27,7 @@ def accounting_source_counts(path):
     import sqlite3
     counts={}
     with sqlite3.connect(path) as db:
-        for table in ['opening_baselines','fx_history','settlement_confirmations','cash_reviews']:
+        for table in ['opening_baselines','fx_history','settlement_confirmations','cash_reviews','activity_confirmations']:
             exists=db.execute('SELECT 1 FROM sqlite_master WHERE name=?',(table,)).fetchone()
             counts[table]=db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0] if exists else 0
     return counts

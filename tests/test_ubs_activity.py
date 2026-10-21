@@ -142,6 +142,27 @@ class ActivityTests(unittest.TestCase):
             self.assertTrue(account['snapshot_match']['matches_booked_after_excluding_later_bookings'])
             self.assertFalse(store.view(snapshot)['portfolio_pnl_verified'])
 
+    def test_overlapping_fx_export_can_omit_optional_terms_without_erasing_prior_source(self):
+        first=posting('-100','Purchase FX Spot','FX1',Description1='Synthetic FX',
+                      Description3='Number/Amt. 5; Transaction price: 20 CZK')
+        later=first|{'Description3':''}
+        with tempfile.TemporaryDirectory() as directory:
+            store=ActivityStore(Path(directory)/'db.sqlite3')
+            store.import_content(account_csv([first]))
+            result=store.import_content(account_csv([later]))
+            self.assertEqual(result['added'],0)
+            self.assertEqual(result['prior_fx_details_retained'],1)
+            records,exports=store.state()
+            self.assertEqual(records[0]['quantity'],'5')
+            self.assertEqual(records[0]['price'],'20')
+            self.assertEqual(len(exports),2)
+            self.assertEqual(exports[-1]['rows'][0]['raw']['Description3'],'')
+            self.assertTrue(store.import_content(account_csv([later]))['already_imported'])
+            for changed in [first|{'Description3':'Number/Amt. 5; Transaction price: 21 CZK'},first|{'Debit':'-101'}]:
+                with self.assertRaisesRegex(ValueError,'Changed UBS transaction'):
+                    store.import_content(account_csv([changed]))
+            self.assertEqual(len(store.state()[0]),1)
+
     def test_fx_legs_margin_and_deposit_principal_are_not_external_funding(self):
         usd = account_csv([
             posting('-25', 'Purchase FX Spot', 'FX1'),

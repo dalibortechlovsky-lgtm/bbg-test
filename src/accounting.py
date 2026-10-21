@@ -8,6 +8,7 @@ from .attribution import attribute_currency
 from .baseline import BaselineStore,portfolio_identity
 from .report import fx_rate
 from .ubs_activity import ActivityStore
+from .activity_confirmations import applicable,with_confirmed_intervals
 
 D = Decimal
 ZERO = D(0)
@@ -131,7 +132,7 @@ def nav_bridge(baseline,snapshot,opening_values,ending_values,flows,historical_f
             'basis':'Closing NAV including accrued interest minus prior year-end NAV minus dated external funding; internal FX conversions and deposit movements stay within the portfolio.'}
 
 
-def calculate_accounting(snapshot,baseline,activity,historical_fx=None,lifecycle=None,cash_reviews=None):
+def calculate_accounting(snapshot,baseline,activity,historical_fx=None,lifecycle=None,cash_reviews=None,activity_confirmations=None):
     if not snapshot: return None
     if not baseline or baseline['as_of']!=str(int(snapshot['as_of'][:4])-1)+'-12-31':
         return {'status':'Opening statement needed','as_of':snapshot['as_of'],'report_currency':'CZK',
@@ -140,10 +141,10 @@ def calculate_accounting(snapshot,baseline,activity,historical_fx=None,lifecycle
                 'realized_totals':{},'history_requests':[],'coverage':[]}
     with localcontext() as context:
         context.prec=70
-        return _calculate(snapshot,baseline,activity,historical_fx or {},lifecycle or [],cash_reviews or {})
+        return _calculate(snapshot,baseline,activity,historical_fx or {},lifecycle or [],cash_reviews or {},activity_confirmations or [])
 
 
-def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews):
+def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,activity_confirmations):
     cutoff=snapshot['as_of'];start=cutoff[:4]+'-01-01';issues=[]
     if baseline['as_of']!=str(int(cutoff[:4])-1)+'-12-31':
         raise ValueError('Opening statement must precede the valuation year')
@@ -362,16 +363,27 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews):
         if c['currency_contribution_czk'] is not None:c['currency_contribution_czk']=str(D(c['currency_contribution_czk'])+adjustment)
         if c['total_pnl_czk'] is not None:c['total_pnl_czk']=str(D(c['total_pnl_czk'])+adjustment)
     total+=sum(adjustments.values(),ZERO)
+    confirmations,confirmation_issues=applicable(activity_confirmations,(activity or {}).get('ledger',[]),start,cutoff)
+    issues+=confirmation_issues
     coverage=[]
     for a in (activity or {}).get('accounts',[]):
-        complete=coverage_complete(a,start,cutoff)
-        coverage.append({'currency':a['currency'],'from':a['from'],'until':a['until'],'complete':complete})
+        bank_complete=coverage_complete(a,start,cutoff)
+        complete=coverage_complete(with_confirmed_intervals(a,confirmations),start,cutoff)
+        coverage.append({'account':a['account'],'currency':a['currency'],'from':a['from'],'until':a['until'],
+                         'complete':complete,'bank_complete':bank_complete,'owner_confirmed':complete and not bank_complete,
+                         'source':'UBS exports + owner confirmation' if complete and not bank_complete else 'UBS exports'})
         if not complete:issues.append(a['currency']+' transaction coverage ends '+a['until']+'; valuation is '+cutoff)
     if not activity:issues.append('UBS account transactions have not been imported')
     available={(a['currency'],a['account']) for a in (activity or {}).get('accounts',[])}
     for p in snapshot['positions']:
         if p['kind']=='cash_account' and (p['currency'],re.sub(r'\s','',p.get('raw',{}).get('IBAN','')).upper()) not in available:
-            issues.append(p['currency']+' account has no transaction export; a zero balance does not establish zero activity')
+            account=re.sub(r'\s','',p.get('raw',{}).get('IBAN','')).upper()
+            confirmed=next((r for r in confirmations if r['account']==account and r['currency']==p['currency'] and
+                            r['kind']=='no_activity' and r['from']<=start and r['until']>=cutoff),None)
+            if confirmed:
+                coverage.append({'account':account,'currency':p['currency'],'from':confirmed['from'],'until':confirmed['until'],
+                                 'complete':True,'bank_complete':False,'owner_confirmed':True,'source':'Owner confirmed no activity'})
+            else:issues.append(p['currency']+' account has no transaction export; a zero balance does not establish zero activity')
     for pair in (activity or {}).get('fx_pairs',[]):
         if pair['status']!='Matched internal currency legs':issues.append('Unmatched FX transaction: '+pair['transaction_no'])
     if not all_rates:issues.append('Historical FX is required for dated capital movements')
@@ -401,17 +413,17 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews):
     bridge['usable']=bool(usable and bridge['pnl_czk'] is not None)
     verified=bool(activity and coverage and all(a['complete'] for a in coverage) and not issues and all_rates and bridge['usable'])
     return {'as_of':cutoff,'opening_as_of':baseline['as_of'],'report_currency':'CZK',
-            'status':'Reconciled supplied records' if verified else 'Provisional · coverage or reconciliation pending',
+            'status':('Reconciled supplied records · owner-confirmed activity coverage' if any(c['owner_confirmed'] for c in coverage) else 'Reconciled supplied records') if verified else 'Provisional · coverage or reconciliation pending',
             'portfolio_pnl_verified':verified,'ytd_pnl_czk':bridge['pnl_czk'] if bridge['usable'] else None,
             'ytd_asset_contribution_czk':str(all_gains) if usable and all(c['asset_contribution_czk'] is not None for c in currencies) else None,'assets':assets,'currencies':currencies,
             'realized_totals':{c:str(v) for c,v in realized_totals.items()},'realized':realized,
             'nav_czk':str(sum((v*(fx_rate(snapshot,c,'CZK') or ZERO) for c,v in ending_values.items()),ZERO)) if nav_complete and not pending else None,
-            'coverage':coverage,'issues':sorted(set(issues)),'cash_checks':cash_checks,'pending_settlements':pending,'cash_decisions':cash_decisions,'nav_bridge':bridge,
+            'coverage':coverage,'issues':sorted(set(issues)),'cash_checks':cash_checks,'pending_settlements':pending,'cash_decisions':cash_decisions,'nav_bridge':bridge,'activity_confirmations':confirmations,
             'history_requests':[{'security':s,'dates':sorted(d)} for s,d in sorted(requests.items())],
             'basis':'Average cost uses UBS native net settlement cash, including recorded fees. Carried costs use the year-end statement unless original UBS acquisition cash fully reconstructs the lot. Realized gains use historical cost and are not added again to YTD gains. YTD uses year-start market values including accrued interest. Asset gains use opening CZK FX; price/FX interaction belongs to currency. Bank payments are external to the selected UBS portfolio; FX conversions and deposits are internal. The difference between internal FX execution amounts and daily fixings is included once in the receiving currency contribution. Owner-confirmed FX hedge cash is moved from asset contribution to currency contribution without changing total P/L. Missing coverage remains provisional.'}
 
 
-def period_view(previous,snapshot,activity,rates,cash_reviews=None):
+def period_view(previous,snapshot,activity,rates,cash_reviews=None,activity_confirmations=None):
     if not previous:return None
     with localcontext() as context:
         context.prec=70
@@ -451,7 +463,8 @@ def period_view(previous,snapshot,activity,rates,cash_reviews=None):
         unsettled=any(r['category'] in {'security_trade','security_redemption','fx_conversion','deposit_principal'}
                       and (r['trade_date']<=start<r['booking_date'] or r['trade_date']<=end<r['booking_date'])
                       for r in (activity or {}).get('ledger',[]))
-        covered=bool(activity) and all(coverage_complete(a,start,end) for a in (activity or {}).get('accounts',[]))
+        confirmations,confirmation_issues=applicable(activity_confirmations or [],(activity or {}).get('ledger',[]),start,end)
+        covered=bool(activity) and not confirmation_issues and all(coverage_complete(with_confirmed_intervals(a,confirmations),start,end) for a in (activity or {}).get('accounts',[]))
         return {'from':start,'to':end,'label':'Daily P/L' if daily else 'Period P/L',
                 'pnl_czk':str(total) if complete and not unsettled and not review_pending else None,'currencies':rows,
                 'status':'Provisional; complete transaction and settlement reconciliation required' if not covered else 'Calculated; see portfolio reconciliation',
@@ -463,10 +476,12 @@ def accounting_view(path,snapshot=None):
     from .history import HistoryStore
     from .lifecycle import LifecycleStore
     from .cash_review import CashReviewStore
+    from .activity_confirmations import ActivityConfirmationStore
     snapshot=snapshot or SnapshotStore(path).latest()
     activity=ActivityStore(path).view(snapshot);rates=HistoryStore(path).rates();decisions=CashReviewStore(path).all()
+    confirmations=ActivityConfirmationStore(path).all()
     result=calculate_accounting(snapshot,BaselineStore(path).latest((snapshot or {}).get('as_of')),
-                                activity,rates,LifecycleStore(path).all(),decisions)
+                                activity,rates,LifecycleStore(path).all(),decisions,confirmations)
     if not result:return result
     result['fx_sources']=HistoryStore(path).sources()
     import json,sqlite3
@@ -475,7 +490,7 @@ def accounting_view(path,snapshot=None):
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='snapshots'").fetchone():
             row=db.execute('SELECT payload FROM snapshots WHERE as_of < ? ORDER BY as_of DESC,exported_at DESC LIMIT 1',(snapshot['as_of'],)).fetchone()
             previous=json.loads(row[0]) if row else None
-    result['period']=period_view(previous,snapshot,activity,rates,decisions)
+    result['period']=period_view(previous,snapshot,activity,rates,decisions,confirmations)
     wanted=defaultdict(set)
     for r in result['history_requests']+((result['period'] or {}).get('history_requests',[])):wanted[r['security']].update(r['dates'])
     result['history_requests']=[{'security':s,'dates':sorted(days)} for s,days in sorted(wanted.items())]
