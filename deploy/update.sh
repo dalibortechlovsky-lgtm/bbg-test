@@ -1,6 +1,16 @@
 #!/bin/bash
 # Update source only. Keep the existing environment, database volumes and passwords.
 set -Eeuo pipefail
+if [[ $# -gt 1 ]]; then
+    echo 'Usage: update.sh [reviewed-commit]'
+    exit 1
+fi
+if [[ $# -eq 1 ]]; then
+    # An explicit reviewed commit is authoritative, including when an old
+    # BBG_RELEASE_SHA remains exported in the recovery console.
+    BBG_RELEASE_SHA=$1
+    export BBG_RELEASE_SHA
+fi
 : "${BBG_RELEASE_SHA:?Set BBG_RELEASE_SHA to the reviewed 40-character commit}"
 [[ "$BBG_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid release commit'; exit 1; }
 [[ "$(id -u)" == 0 ]] || { echo 'Run from the server root console'; exit 1; }
