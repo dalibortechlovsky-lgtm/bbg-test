@@ -145,16 +145,27 @@ class NativeAccountingTests(unittest.TestCase):
         view=activity([flow]);identifier=view['ledger'][0]['id']
         decisions={identifier:{'classification':'asset_settlement'}}
         result=calculate_accounting(snapshot(cash='150'),self.baseline,view,cash_reviews=decisions)
-        self.assertEqual(Decimal(result['ytd_pnl_czk']),1440)
+        self.assertIsNone(result['ytd_pnl_czk'])
         self.assertEqual(Decimal(result['nav_bridge']['net_external_flows_czk']),0)
         self.assertEqual(result['nav_bridge']['external_flows'],[])
         self.assertEqual(result['cash_decisions'][0]['decision'],'asset_settlement')
-        self.assertTrue(any('opening premium/cost is not in UBS records: EXPIRY' in issue for issue in result['issues']))
+        self.assertTrue(any('needs its prior year-end value: EXPIRY' in issue for issue in result['issues']))
 
-        previous=snapshot('0','0','100',as_of='2026-01-01',fx='20')
+        decisions[identifier]|={'opening_value':'2','opening_currency':'EUR','opening_as_of':'2025-12-31'}
+        result=calculate_accounting(snapshot(cash='150'),self.baseline,view,cash_reviews=decisions)
+        self.assertEqual(Decimal(result['ytd_pnl_czk']),1392)
+        self.assertEqual(Decimal(result['nav_bridge']['reported_opening_nav_czk']),3600)
+        self.assertEqual(Decimal(result['nav_bridge']['transferred_opening_basis_czk']),48)
+        self.assertEqual(Decimal(result['nav_bridge']['opening_nav_czk']),3648)
+        self.assertEqual(result['nav_bridge']['settlement_bases'][0]['amount_native'],'2')
+        self.assertEqual(Decimal(result['nav_bridge']['attribution_difference_czk']),0)
+        self.assertFalse(any('needs its prior year-end value' in issue for issue in result['issues']))
+
+        previous=snapshot('0','0','100',as_of='2025-12-31',fx='20')
+        previous['exchange_rates']['EUR/CZK']='24'
         current=snapshot('0','0','150',as_of='2026-10-14',fx='21')
         period=period_view(previous,current,view,{},cash_reviews=decisions)
-        self.assertEqual(Decimal(period['pnl_czk']),1150)
+        self.assertEqual(Decimal(period['pnl_czk']),1102)
 
     def test_internal_fx_is_never_removed_as_external_funding(self):
         flows={'USD':[{'kind':'internal_fx','reference':'FX','date':'2026-01-05','amount':'-100'}],
@@ -358,7 +369,8 @@ class AccountingStorageTests(unittest.TestCase):
             store.record([decision],rows);store.record([decision],rows)
             self.assertEqual(store.all()[decision['id']],decision)
             with self.assertRaises(ValueError):store.record([decision|{'classification':'fx_hedge_settlement'}],rows)
-            replacement=decision|{'classification':'asset_settlement','reason':'Owner corrected: outside-bank trade expiry'}
+            replacement=decision|{'classification':'asset_settlement','reason':'Owner corrected: outside-bank trade expiry',
+                                  'opening_value':'2263519','opening_currency':'EUR','opening_as_of':'2025-12-31'}
             store.record([replacement],rows)
             self.assertEqual(store.all()[decision['id']],replacement)
             with sqlite3.connect(db) as connection:self.assertEqual(connection.execute('SELECT COUNT(*) FROM cash_reviews').fetchone()[0],2)

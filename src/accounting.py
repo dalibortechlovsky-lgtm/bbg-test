@@ -103,7 +103,7 @@ def internal_fx_adjustments(flows,historical_fx):
     return adjustments
 
 
-def nav_bridge(baseline,snapshot,opening_values,ending_values,flows,historical_fx):
+def nav_bridge(baseline,snapshot,opening_values,ending_values,flows,historical_fx,reported_opening_values=None,settlement_bases=None):
     """Portfolio P/L needs external funding FX, not internal conversion fixings.
 
     Internal FX is needed for the currency attribution, but its two cash legs
@@ -126,10 +126,17 @@ def nav_bridge(baseline,snapshot,opening_values,ending_values,flows,historical_f
                              'amount_czk':text(amount*D(rate)) if rate is not None else None})
     funding=None if missing else sum((D(f['amount_czk']) for f in external),ZERO)
     pnl=totals[1]-totals[0]-funding if all(v is not None for v in totals) and funding is not None else None
-    return {'opening_nav_czk':text(totals[0]),'closing_nav_czk':text(totals[1]),
+    reported_opening_values=reported_opening_values or opening_values
+    reported_rates={c:fx_rate(baseline,c,'CZK') for c in reported_opening_values}
+    reported_opening=None if any(v and reported_rates[c] is None for c,v in reported_opening_values.items()) else sum(
+        (v*(reported_rates[c] or ZERO) for c,v in reported_opening_values.items()),ZERO)
+    transferred=sum((D(row['amount_czk']) for row in settlement_bases or []),ZERO)
+    return {'opening_nav_czk':text(totals[0]),'reported_opening_nav_czk':text(reported_opening),
+            'transferred_opening_basis_czk':str(transferred),'settlement_bases':settlement_bases or [],
+            'closing_nav_czk':text(totals[1]),
             'net_external_flows_czk':text(funding),'pnl_czk':text(pnl),
             'external_flows':external,'missing_external_fx':sorted(set(missing)),
-            'basis':'Closing NAV including accrued interest minus prior year-end NAV minus dated external funding; internal FX conversions and deposit movements stay within the portfolio.'}
+            'basis':'Closing NAV including accrued interest minus adjusted opening value minus dated external funding. Adjusted opening value includes owner-confirmed year-end values of outside-bank instruments that later settled into UBS; internal FX conversions and deposit movements stay within the portfolio.'}
 
 
 def calculate_accounting(snapshot,baseline,activity,historical_fx=None,lifecycle=None,cash_reviews=None,activity_confirmations=None):
@@ -175,7 +182,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
                 inv['basis']='UBS original net acquisition cash; fees included, paid accrued interest excluded'
         except ValueError: pass
     asset_cash=defaultdict(Decimal);income=defaultdict(Decimal);realized=[];futures=defaultdict(Decimal)
-    cash_income=defaultdict(Decimal);hedges=defaultdict(Decimal);cash_decisions=[]
+    cash_income=defaultdict(Decimal);hedges=defaultdict(Decimal);cash_decisions=[];settlement_bases=[];settlement_basis_pending=False
     trades=[r for r in records if r['category'] in {'security_trade','security_redemption'} and
             start<=r['trade_date']<=cutoff and r['id'] not in retired]
     mixed=defaultdict(list)
@@ -223,14 +230,28 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
             else:cash_income[r['currency']]+=D(r['amount'])
         if r['category']=='futures_margin': futures[r['currency']]+=D(r['amount'])
         if r['category'] in {'otc_settlement_review','transfer_review'}:
-            decision=cash_reviews.get(r['id'],{}).get('classification')
+            review=cash_reviews.get(r['id'],{});decision=review.get('classification')
             cash_decisions.append({k:r[k] for k in ['id','category','currency','amount','booking_date','description','transaction_no']}|
-                                  {'decision':decision,'reference':r.get('counterparty_reference','')})
+                                  {'decision':decision,'reference':r.get('counterparty_reference',''),
+                                   'opening_value':review.get('opening_value'),'opening_currency':review.get('opening_currency'),
+                                   'opening_as_of':review.get('opening_as_of')})
             if r['category']=='otc_settlement_review':
                 if decision=='fx_hedge_settlement':hedges[r['currency']]+=D(r['amount'])
                 elif decision!='asset_settlement':issues.append('OTC settlement needs asset/hedge allocation: '+r['transaction_no'])
             elif decision=='asset_settlement':
-                issues.append('Outside-bank trading settlement uses the gross cash receipt; opening premium/cost is not in UBS records: '+r['transaction_no'])
+                if all(review.get(k) is not None for k in ['opening_value','opening_currency','opening_as_of']):
+                    rate=fx_rate(baseline,review['opening_currency'],'CZK')
+                    if review['opening_as_of']!=baseline['as_of']:
+                        issues.append('Outside-bank settlement basis must match the opening valuation date: '+r['transaction_no']);settlement_basis_pending=True
+                    elif rate is None:
+                        issues.append('Opening FX is missing for outside-bank settlement basis: '+r['transaction_no']);settlement_basis_pending=True
+                    else:
+                        value=D(review['opening_value']);settlement_bases.append({'reference':r['transaction_no'],
+                            'as_of':review['opening_as_of'],'currency':review['opening_currency'],'amount_native':str(value),
+                            'fx_to_czk':str(rate),'amount_czk':str(value*rate),'settlement_date':r['booking_date'],
+                            'settlement_currency':r['currency'],'settlement_amount_native':r['amount']})
+                else:
+                    issues.append('Outside-bank trading settlement needs its prior year-end value: '+r['transaction_no']);settlement_basis_pending=True
     for key,confirmation in settled.items():
         if key not in book:continue
         inv=book[key]
@@ -327,6 +348,10 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
         if difference:issues.append(p['currency']+' '+p['kind']+' does not reconcile to opening balances and supplied cash postings')
     opening_values=defaultdict(Decimal);ending_values=defaultdict(Decimal)
     for p in baseline['positions']:opening_values[p['currency']]+=D(p['market_value_native'])+D(p['accrued_native'])
+    reported_opening_values=opening_values.copy()
+    for item in settlement_bases:
+        opening_values[item['currency']]+=D(item['amount_native'])
+        native_asset[item['currency']]-=D(item['amount_native'])
     for p in current:
         if p['value'] is not None:ending_values[p['currency']]+=p['value']
         else:issues.append('Native valuation missing: '+p['description'])
@@ -400,7 +425,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
     usable=not pending and not prior_pending and not uncertain and all(p['value'] is not None for p in current) and all(
         pair['status']=='Matched internal currency legs' for pair in (activity or {}).get('fx_pairs',[]))
     nav_complete=all(p['value'] is not None and (not p['value'] or fx_rate(snapshot,p['currency'],'CZK')) for p in current)
-    bridge=nav_bridge(baseline,snapshot,opening_values,ending_values,flows,historical_fx)
+    bridge=nav_bridge(baseline,snapshot,opening_values,ending_values,flows,historical_fx,reported_opening_values,settlement_bases)
     if not nav_complete or pending:
         bridge['closing_nav_czk']=None
         bridge['pnl_czk']=None
@@ -410,6 +435,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
     if uncertain:
         bridge['net_external_flows_czk']=None
         bridge['pnl_czk']=None
+    if settlement_basis_pending:bridge['pnl_czk']=None
     bridge['attribution_difference_czk']=text(D(bridge['pnl_czk'])-total) if all_rates and bridge['pnl_czk'] is not None else None
     if bridge['attribution_difference_czk'] is not None and abs(D(bridge['attribution_difference_czk']))>D('0.005'):
         issues.append('NAV less external funding does not reconcile to the asset/currency attribution')
@@ -425,7 +451,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
             'nav_czk':str(sum((v*(fx_rate(snapshot,c,'CZK') or ZERO) for c,v in ending_values.items()),ZERO)) if nav_complete and not pending else None,
             'coverage':coverage,'issues':sorted(set(issues)),'cash_checks':cash_checks,'pending_settlements':pending,'cash_decisions':cash_decisions,'nav_bridge':bridge,'activity_confirmations':confirmations,
             'history_requests':[{'security':s,'dates':sorted(d)} for s,d in sorted(requests.items())],
-            'basis':'Average cost uses UBS native net settlement cash, including recorded fees. Carried costs use the year-end statement unless original UBS acquisition cash fully reconstructs the lot. Realized gains use historical cost and are not added again to YTD gains. YTD uses year-start market values including accrued interest. Asset gains use opening CZK FX; price/FX interaction belongs to currency. Owner-confirmed funding payments are external to the selected UBS portfolio; owner-confirmed trade settlements, FX conversions and deposits are internal. The difference between internal FX execution amounts and daily fixings is included once in the receiving currency contribution. Owner-confirmed FX hedge cash is moved from asset contribution to currency contribution without changing total P/L. Missing coverage remains provisional.'}
+            'basis':'Average cost uses UBS native net settlement cash, including recorded fees. Carried costs use the year-end statement unless original UBS acquisition cash fully reconstructs the lot. Realized gains use historical cost and are not added again to YTD gains. YTD uses year-start market values including accrued interest, including owner-confirmed year-end values for outside-bank instruments that settled into UBS. Asset gains use opening CZK FX; price/FX interaction belongs to currency. Owner-confirmed funding payments are external to the selected UBS portfolio; owner-confirmed trade settlements, FX conversions and deposits are internal. The difference between internal FX execution amounts and daily fixings is included once in the receiving currency contribution. Owner-confirmed FX hedge cash is moved from asset contribution to currency contribution without changing total P/L. Missing coverage remains provisional.'}
 
 
 def period_view(previous,snapshot,activity,rates,cash_reviews=None,activity_confirmations=None):
@@ -444,9 +470,14 @@ def period_view(previous,snapshot,activity,rates,cash_reviews=None,activity_conf
                 hedges[r['currency']]+=D(r['amount'])
             if start<r['booking_date']<=end and r['category'] in {'fx_conversion','transfer_review'} and r['id'] not in internal_ids:
                 if r['category']=='transfer_review':
-                    decision=decisions.get(r['id'],{}).get('classification')
+                    review=decisions.get(r['id'],{});decision=review.get('classification')
                     if decision is None:review_pending=True
-                    elif decision!='external_funding':continue
+                    elif decision!='external_funding':
+                        if (decision=='asset_settlement' and review.get('opening_as_of')==start and
+                                review.get('opening_value') is not None and review.get('opening_currency')):
+                            begin[review['opening_currency']]+=D(review['opening_value'])
+                        else:review_pending=True
+                        continue
                 flows[r['currency']].append({'date':r['booking_date'],'amount':r['amount'],'reference':r['transaction_no'],
                     'kind':'internal_fx' if r['category']=='fx_conversion' else 'bank_payment'})
         requests=defaultdict(set);rows=[];total=ZERO;complete=True

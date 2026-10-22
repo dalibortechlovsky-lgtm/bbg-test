@@ -30,7 +30,8 @@ def desk_csv(data):
               'description':confirmation['from']+' to '+confirmation['until']+'; '+confirmation['kind']+'; '+confirmation['reason'],
               'status':'Owner statement; original UBS export preserved'})
     bridge=a.get('nav_bridge',{})
-    for title,key in [('OPENING NAV','opening_nav_czk'),('CLOSING NAV','closing_nav_czk'),
+    for title,key in [('REPORTED UBS OPENING NAV','reported_opening_nav_czk'),('TRANSFERRED OPENING BASIS','transferred_opening_basis_czk'),
+                      ('ADJUSTED OPENING VALUE','opening_nav_czk'),('CLOSING NAV','closing_nav_czk'),
                       ('NET EXTERNAL FUNDING','net_external_flows_czk')]:
         if bridge:emit({'section':title,'as_of':a['opening_as_of'] if key=='opening_nav_czk' else a['as_of'],
                         'currency':'CZK','description':bridge['basis'],'total_pnl_czk':bridge[key],'status':a['status']})
@@ -39,6 +40,10 @@ def desk_csv(data):
         emit({'section':'EXTERNAL FUNDING','as_of':flow['date'],'currency':flow['currency'],
               'description':flow['reference']+'; native '+flow['amount_native']+'; CZK FX '+str(flow['fx_to_czk']),
               'total_pnl_czk':flow['amount_czk'],'status':'Capital movement excluded from P/L'})
+    for basis in bridge.get('settlement_bases',[]):
+        emit({'section':'TRANSFERRED OPENING BASIS','as_of':basis['as_of'],'currency':basis['currency'],
+              'description':basis['reference']+'; native '+basis['amount_native']+'; opening CZK FX '+basis['fx_to_czk'],
+              'total_pnl_czk':basis['amount_czk'],'status':'Deducted from gross settlement proceeds when calculating P/L'})
     for fixing in a.get('fx_sources',[]):
         emit({'section':'HISTORICAL FX','as_of':fixing['date'],'currency':fixing['security'][:3],
               'description':fixing['source'],'market_price_native':fixing['price'],'status':'CZK per native currency unit'})
@@ -89,8 +94,8 @@ body{font:12px Arial;color:#202020;margin:24px auto;padding:20px;max-width:1100p
     parts.append('<table class="summary"><tr><th>Net asset value CZK · incl. accrued interest</th>'+cell(a.get('nav_czk'),highlight=False)+'</tr><tr><th>YTD P/L CZK</th>'+cell(a['ytd_pnl_czk'])+'</tr></table>')
     bridge=a.get('nav_bridge')
     if bridge:
-        parts.append('<p class="notes">YTD = closing NAV − opening NAV − net external funding. Positive funding means deposits into the portfolio; withdrawals are negative. '+e(bridge['basis'])+'</p>')
-        parts.append('<table><tr><th>Opening NAV CZK</th><th>Closing NAV CZK</th><th>Net external funding CZK</th></tr><tr>'+cell(bridge['opening_nav_czk'],highlight=False)+cell(bridge['closing_nav_czk'],highlight=False)+cell(bridge['net_external_flows_czk'],highlight=False)+'</tr></table>')
+        parts.append('<p class="notes">YTD = closing NAV − adjusted opening value − net external funding. Positive funding means deposits into the portfolio; withdrawals are negative. '+e(bridge['basis'])+'</p>')
+        parts.append('<table><tr><th>Reported UBS opening NAV CZK</th><th>Transferred opening basis CZK</th><th>Adjusted opening value CZK</th><th>Closing NAV CZK</th><th>Net external funding CZK</th></tr><tr>'+cell(bridge['reported_opening_nav_czk'],highlight=False)+cell(bridge['transferred_opening_basis_czk'],highlight=False)+cell(bridge['opening_nav_czk'],highlight=False)+cell(bridge['closing_nav_czk'],highlight=False)+cell(bridge['net_external_flows_czk'],highlight=False)+'</tr></table>')
         if bridge['missing_external_fx']:
             parts.append('<p class="notes">YTD needs verified funding-date FX: '+e('; '.join(bridge['missing_external_fx']))+'.</p>')
     sources=sorted({'CNB official daily fixings' if f['source'].startswith('CNB ') else f['source'] for f in a.get('fx_sources',[])})
