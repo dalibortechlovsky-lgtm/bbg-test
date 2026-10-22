@@ -153,6 +153,18 @@ omits raw source fields such as IBANs. `POST /api/import/positions` requires
 and does not allow cross-origin dashboard uploads. This remains a local development
 service, not an authenticated remote-access deployment.
 
+Other institutions use the separate **Other-bank positions** import. Download
+`/api/templates/external-positions.csv`, keep one institution, portfolio and
+as-of date per file, and import native market values plus accrued interest. Every
+file is retained append-only; consolidated AUM uses the latest snapshot for each
+institution and portfolio. Conversion to CZK uses a recent compatible Bloomberg
+FX quote, falling back to the dated UBS snapshot rate with that source shown.
+Mixed valuation dates are labeled. Other-bank values remain outside UBS P/L until
+that bank has its own opening balances and complete transaction history.
+
+`POST /api/import/external-positions` requires `Content-Type: text/csv` and
+`X-Import-Format: other-bank-positions`, with the same size and origin checks.
+
 
 ## Persistent order history and review
 

@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 import csv
+from decimal import Decimal
 from io import StringIO
 from .storage import SnapshotStore, DEFAULT_DB
 from .quotes import QuoteStore
@@ -21,6 +22,7 @@ from .baseline import BaselineStore
 from .snapshot_risk import snapshot_risk
 from .historical_positions import (HistoricalRequestStore, selection as historical_selection,
                                    view as historical_positions_view)
+from .external_positions import ExternalPositionStore,template as external_positions_template
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -101,6 +103,10 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.reply(mars_report_html(snapshot),'text/html; charset=utf-8',filename='mars-trader-report.html' if path.endswith('.html') else None)
             return
+        if path=='/api/templates/external-positions.csv':
+            self.reply(external_positions_template().encode('utf-8-sig'),'text/csv; charset=utf-8',
+                       filename='other-bank-positions-template.csv')
+            return
         if path in {'/api/templates/performance.csv','/api/templates/risk.csv'}:
             out=StringIO(); writer=csv.writer(out)
             writer.writerow(PERFORMANCE_HEADERS if 'performance' in path else RISK_HEADERS)
@@ -147,6 +153,12 @@ class Handler(BaseHTTPRequestHandler):
                 {key: value for key, value in row.items() if key != 'raw'} for row in snapshot['positions']]
             performance,ptd,activity=self.performance_state(snapshot,bloomberg)
             baseline=BaselineStore(self.store.path).latest(snapshot['as_of']) if self.store and snapshot else None
+            accounting=accounting_view(self.store.path,snapshot) if self.store else None
+            external=ExternalPositionStore(self.store.path).view(snapshot,bloomberg) if self.store else None
+            ubs_aum=(accounting or {}).get('nav_czk');other_aum=(external or {}).get('aum_czk')
+            consolidated=str(Decimal(ubs_aum)+Decimal(other_aum)) if ubs_aum is not None and other_aum is not None else None
+            valuation_dates=sorted(({snapshot['as_of']} if snapshot else set())|
+                                   {s['as_of'] for s in (external or {}).get('snapshots',[])})
             self.reply({
                 'mode': 'development',
                 'asset_classes': ['Equities', 'Equity derivatives', 'Bonds', 'FX'],
@@ -156,7 +168,11 @@ class Handler(BaseHTTPRequestHandler):
                 'performance': performance,
                 'ptd':ptd,
                 'activity':activity,
-                'accounting':accounting_view(self.store.path,snapshot) if self.store else None,
+                'accounting':accounting,
+                'external_positions':external,
+                'aum':{'ubs_czk':ubs_aum,'other_banks_czk':other_aum,'consolidated_czk':consolidated,
+                       'valuation_dates':valuation_dates,'mixed_valuation_dates':len(valuation_dates)>1,
+                       'basis':'UBS net assets plus the latest imported snapshot for each other-bank portfolio. Other-bank positions are AUM only and do not enter UBS P/L.'},
                 'snapshot_risk':snapshot_risk(snapshot),
                 'baseline':{k:v for k,v in baseline.items() if k!='positions'} if baseline else None,
                 'accounting_source_counts':accounting_source_counts(self.store.path) if self.store else {},
@@ -247,6 +263,7 @@ class Handler(BaseHTTPRequestHandler):
             self.bridge_post()
             return
         formats = {'/api/import/positions': 'ubs-positions', '/api/import/orders': 'ubs-orders',
+                   '/api/import/external-positions':'other-bank-positions',
                    '/api/import/performance':'desk-performance','/api/import/risk':'desk-risk','/api/import/mars':'bloomberg-mars','/api/import/ptd':'bloomberg-ptd'}
         if self.path not in formats or not self.store:
             self.send_error(404)
@@ -277,6 +294,8 @@ class Handler(BaseHTTPRequestHandler):
             content = raw.decode('utf-8-sig')
             if self.path=='/api/import/ptd':
                 result=PtdStore(self.store.path).import_content(content)
+            elif self.path=='/api/import/external-positions':
+                result=ExternalPositionStore(self.store.path).import_content(content)
             elif self.path=='/api/import/performance':
                 result=PerformanceStore(self.store.path).import_content(content)
             elif self.path=='/api/import/risk':
@@ -287,7 +306,7 @@ class Handler(BaseHTTPRequestHandler):
         except (UnicodeError, ValueError) as exc:
             self.reply({'error': str(exc)}, status=400)
             return
-        if self.path in {'/api/import/performance','/api/import/risk','/api/import/ptd'}:
+        if self.path in {'/api/import/performance','/api/import/risk','/api/import/ptd','/api/import/external-positions'}:
             self.reply(result)
         elif self.path == '/api/import/orders':
             self.reply(result, status=200 if result['accepted'] else 409)
