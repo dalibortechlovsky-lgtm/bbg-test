@@ -21,7 +21,7 @@ class CashReviewStore:
             if not isinstance(row,dict) or set(row)!={'id','classification','reason'}:raise ValueError('Invalid cash decision fields')
             if not isinstance(row['id'],str) or row['id'] not in sources:raise ValueError('Cash posting not found')
             source=sources[row['id']]
-            allowed={'external_funding'} if source['category']=='transfer_review' else {'asset_settlement','fx_hedge_settlement'} if source['category']=='otc_settlement_review' else set()
+            allowed={'external_funding','asset_settlement'} if source['category']=='transfer_review' else {'asset_settlement','fx_hedge_settlement'} if source['category']=='otc_settlement_review' else set()
             if not isinstance(row['classification'],str) or row['classification'] not in allowed:raise ValueError('Unsupported classification for this cash posting')
             if not isinstance(row['reason'],str) or not 1<=len(row['reason'])<=512 or any(ord(c)<32 for c in row['reason']):raise ValueError('A short plain-text decision reason is required')
             clean.append(row)

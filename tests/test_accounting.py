@@ -140,6 +140,22 @@ class NativeAccountingTests(unittest.TestCase):
         self.assertEqual(Decimal(a['ytd_pnl_czk']),390)
         self.assertEqual(Decimal(a['ytd_asset_contribution_czk']),200)
 
+    def test_outside_bank_trade_settlement_is_performance_and_flags_missing_cost(self):
+        flow=posting('50','Special payment order','EXPIRY',Description1='Derivative expiry from other bank')
+        view=activity([flow]);identifier=view['ledger'][0]['id']
+        decisions={identifier:{'classification':'asset_settlement'}}
+        result=calculate_accounting(snapshot(cash='150'),self.baseline,view,cash_reviews=decisions)
+        self.assertEqual(Decimal(result['ytd_pnl_czk']),1440)
+        self.assertEqual(Decimal(result['nav_bridge']['net_external_flows_czk']),0)
+        self.assertEqual(result['nav_bridge']['external_flows'],[])
+        self.assertEqual(result['cash_decisions'][0]['decision'],'asset_settlement')
+        self.assertTrue(any('opening premium/cost is not in UBS records: EXPIRY' in issue for issue in result['issues']))
+
+        previous=snapshot('0','0','100',as_of='2026-01-01',fx='20')
+        current=snapshot('0','0','150',as_of='2026-10-14',fx='21')
+        period=period_view(previous,current,view,{},cash_reviews=decisions)
+        self.assertEqual(Decimal(period['pnl_czk']),1150)
+
     def test_internal_fx_is_never_removed_as_external_funding(self):
         flows={'USD':[{'kind':'internal_fx','reference':'FX','date':'2026-01-05','amount':'-100'}],
                'EUR':[{'kind':'internal_fx','reference':'FX','date':'2026-01-05','amount':'89'}]}
@@ -342,7 +358,9 @@ class AccountingStorageTests(unittest.TestCase):
             store.record([decision],rows);store.record([decision],rows)
             self.assertEqual(store.all()[decision['id']],decision)
             with self.assertRaises(ValueError):store.record([decision|{'classification':'fx_hedge_settlement'}],rows)
-            store.record([decision|{'reason':'Owner reconfirmed boundary'}],rows)
+            replacement=decision|{'classification':'asset_settlement','reason':'Owner corrected: outside-bank trade expiry'}
+            store.record([replacement],rows)
+            self.assertEqual(store.all()[decision['id']],replacement)
             with sqlite3.connect(db) as connection:self.assertEqual(connection.execute('SELECT COUNT(*) FROM cash_reviews').fetchone()[0],2)
 
     def test_owner_import_and_market_device_routes_are_separate(self):

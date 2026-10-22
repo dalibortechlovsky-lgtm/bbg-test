@@ -229,6 +229,8 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
             if r['category']=='otc_settlement_review':
                 if decision=='fx_hedge_settlement':hedges[r['currency']]+=D(r['amount'])
                 elif decision!='asset_settlement':issues.append('OTC settlement needs asset/hedge allocation: '+r['transaction_no'])
+            elif decision=='asset_settlement':
+                issues.append('Outside-bank trading settlement uses the gross cash receipt; opening premium/cost is not in UBS records: '+r['transaction_no'])
     for key,confirmation in settled.items():
         if key not in book:continue
         inv=book[key]
@@ -280,9 +282,12 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
         if not start<=r['booking_date']<=cutoff:continue
         if r['category'] in {'fx_conversion','transfer_review'}:
             if r['transaction_no'] in internal_references:continue
-            if r['category']=='transfer_review' and cash_reviews.get(r['id'],{}).get('classification')!='external_funding':
-                issues.append('Bank payment portfolio boundary requires confirmation: '+r['transaction_no'])
-                uncertain.add(r['currency'])
+            if r['category']=='transfer_review':
+                decision=cash_reviews.get(r['id'],{}).get('classification')
+                if decision is None:
+                    issues.append('Bank payment portfolio boundary requires confirmation: '+r['transaction_no'])
+                    uncertain.add(r['currency'])
+                elif decision!='external_funding':continue
             flows[r['currency']].append({'date':r['booking_date'],'amount':r['amount'],
                 'kind':'internal_fx' if r['category']=='fx_conversion' else 'bank_payment',
                 'reference':r['transaction_no']})
@@ -420,7 +425,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
             'nav_czk':str(sum((v*(fx_rate(snapshot,c,'CZK') or ZERO) for c,v in ending_values.items()),ZERO)) if nav_complete and not pending else None,
             'coverage':coverage,'issues':sorted(set(issues)),'cash_checks':cash_checks,'pending_settlements':pending,'cash_decisions':cash_decisions,'nav_bridge':bridge,'activity_confirmations':confirmations,
             'history_requests':[{'security':s,'dates':sorted(d)} for s,d in sorted(requests.items())],
-            'basis':'Average cost uses UBS native net settlement cash, including recorded fees. Carried costs use the year-end statement unless original UBS acquisition cash fully reconstructs the lot. Realized gains use historical cost and are not added again to YTD gains. YTD uses year-start market values including accrued interest. Asset gains use opening CZK FX; price/FX interaction belongs to currency. Bank payments are external to the selected UBS portfolio; FX conversions and deposits are internal. The difference between internal FX execution amounts and daily fixings is included once in the receiving currency contribution. Owner-confirmed FX hedge cash is moved from asset contribution to currency contribution without changing total P/L. Missing coverage remains provisional.'}
+            'basis':'Average cost uses UBS native net settlement cash, including recorded fees. Carried costs use the year-end statement unless original UBS acquisition cash fully reconstructs the lot. Realized gains use historical cost and are not added again to YTD gains. YTD uses year-start market values including accrued interest. Asset gains use opening CZK FX; price/FX interaction belongs to currency. Owner-confirmed funding payments are external to the selected UBS portfolio; owner-confirmed trade settlements, FX conversions and deposits are internal. The difference between internal FX execution amounts and daily fixings is included once in the receiving currency contribution. Owner-confirmed FX hedge cash is moved from asset contribution to currency contribution without changing total P/L. Missing coverage remains provisional.'}
 
 
 def period_view(previous,snapshot,activity,rates,cash_reviews=None,activity_confirmations=None):
@@ -438,7 +443,10 @@ def period_view(previous,snapshot,activity,rates,cash_reviews=None,activity_conf
             if start<r['booking_date']<=end and r['category']=='otc_settlement_review' and decisions.get(r['id'],{}).get('classification')=='fx_hedge_settlement':
                 hedges[r['currency']]+=D(r['amount'])
             if start<r['booking_date']<=end and r['category'] in {'fx_conversion','transfer_review'} and r['id'] not in internal_ids:
-                if r['category']=='transfer_review' and decisions.get(r['id'],{}).get('classification')!='external_funding':review_pending=True
+                if r['category']=='transfer_review':
+                    decision=decisions.get(r['id'],{}).get('classification')
+                    if decision is None:review_pending=True
+                    elif decision!='external_funding':continue
                 flows[r['currency']].append({'date':r['booking_date'],'amount':r['amount'],'reference':r['transaction_no'],
                     'kind':'internal_fx' if r['category']=='fx_conversion' else 'bank_payment'})
         requests=defaultdict(set);rows=[];total=ZERO;complete=True
