@@ -58,6 +58,9 @@ def desk_csv(data):
               'description':'Grouped expiry/margin cash result','asset_pnl_native':c['futures_settlements_native']})
         emit({'section':'CASH AND DEPOSITS','as_of':a['as_of'],'currency':c['currency'],
               'description':'Income, costs and unallocated cash items','asset_pnl_native':c['cash_deposit_income_costs_native']})
+        emit({'section':'OUTSIDE TRADING PROFIT','as_of':a['as_of'],'currency':c['currency'],
+              'description':'Owner-confirmed net profit received from outside UBS; no principal',
+              'asset_pnl_native':c.get('outside_trading_profit_native','0')})
         emit({'section':'FX HEDGE CASH','as_of':a['as_of'],'currency':c['currency'],
               'description':'Owner-confirmed cash assigned to currency contribution','income_native':c['fx_hedge_settlements_native']})
     for c,v in a['realized_totals'].items():emit({'section':'REALIZED TOTAL','currency':c,'realized_native':v,'status':'Historical average cost; not added again to YTD'})
@@ -105,8 +108,8 @@ body{font:12px Arial;color:#202020;margin:24px auto;padding:20px;max-width:1100p
         if Decimal(c['opening_native'])==0 and Decimal(c['closing_native'])==0:continue
         parts.append('<tr><td>'+e(c['currency'])+'</td>'+cell(c['native_asset_pnl'])+cell(c['asset_contribution_czk'])+cell(c['currency_contribution_czk'])+cell(c['total_pnl_czk'])+'</tr>')
     parts.append('</tbody></table>')
-    parts.append('<h2>Cash, deposits and settled derivatives</h2><table><tr><th>Currency</th><th>Grouped expiry / margin cash result</th><th>Cash / deposits and unallocated items</th><th>FX hedge cash · currency contribution</th><th>Realized total · historical average cost</th></tr>')
-    for c in a['currencies']:parts.append('<tr><td>'+e(c['currency'])+'</td>'+cell(c['futures_settlements_native'])+cell(c['cash_deposit_income_costs_native'])+cell(c['fx_hedge_settlements_native'])+cell(a['realized_totals'].get(c['currency']))+'</tr>')
+    parts.append('<h2>Cash, deposits and settled derivatives</h2><table><tr><th>Currency</th><th>Grouped expiry / margin cash result</th><th>Cash / deposits and unallocated items</th><th>Outside trading profit</th><th>FX hedge cash · currency contribution</th><th>Realized total · historical average cost</th></tr>')
+    for c in a['currencies']:parts.append('<tr><td>'+e(c['currency'])+'</td>'+cell(c['futures_settlements_native'])+cell(c['cash_deposit_income_costs_native'])+cell(c.get('outside_trading_profit_native','0'))+cell(c['fx_hedge_settlements_native'])+cell(a['realized_totals'].get(c['currency']))+'</tr>')
     parts.append('</table>')
     if a.get('period'):
         p=a['period'];parts.append('<p>'+e(p['label']+' CZK · '+p['from']+' → '+p['to'])+': <strong>'+e(fmt(p['pnl_czk']))+'</strong> · '+e(p['status'])+'</p>')

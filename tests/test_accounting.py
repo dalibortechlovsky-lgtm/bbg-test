@@ -140,6 +140,19 @@ class NativeAccountingTests(unittest.TestCase):
         self.assertEqual(Decimal(a['ytd_pnl_czk']),390)
         self.assertEqual(Decimal(a['ytd_asset_contribution_czk']),200)
 
+    def test_owner_confirmed_profit_receipt_is_not_external_funding(self):
+        from src.cash_review import CashReviewStore
+        flow=posting('50','Special payment order','PROFIT',Description1='Outside-bank realized profit')
+        data=activity([flow]);identifier=data['ledger'][0]['id']
+        decision={'id':identifier,'classification':'trading_profit','reason':'Owner confirmed net profit only, no principal.'}
+        with tempfile.TemporaryDirectory() as directory:
+            store=CashReviewStore(Path(directory)/'db.sqlite3');store.record([decision],data['ledger'])
+            result=calculate_accounting(snapshot(cash='150'),self.baseline,data,cash_reviews=store.all())
+        self.assertEqual(Decimal(result['ytd_pnl_czk']),1440)
+        self.assertEqual(Decimal(result['nav_bridge']['net_external_flows_czk']),0)
+        self.assertEqual(Decimal(result['currencies'][0]['outside_trading_profit_native']),50)
+        self.assertEqual(Decimal(result['nav_bridge']['attribution_difference_czk']),0)
+
     def test_outside_bank_trade_settlement_is_performance_and_flags_missing_cost(self):
         flow=posting('50','Special payment order','EXPIRY',Description1='Derivative expiry from other bank')
         view=activity([flow]);identifier=view['ledger'][0]['id']

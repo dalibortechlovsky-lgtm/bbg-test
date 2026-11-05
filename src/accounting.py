@@ -183,6 +183,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
         except ValueError: pass
     asset_cash=defaultdict(Decimal);income=defaultdict(Decimal);realized=[];futures=defaultdict(Decimal)
     cash_income=defaultdict(Decimal);hedges=defaultdict(Decimal);cash_decisions=[];settlement_bases=[];settlement_basis_pending=False
+    outside_profits=defaultdict(Decimal)
     trades=[r for r in records if r['category'] in {'security_trade','security_redemption'} and
             start<=r['trade_date']<=cutoff and r['id'] not in retired]
     mixed=defaultdict(list)
@@ -238,6 +239,8 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
             if r['category']=='otc_settlement_review':
                 if decision=='fx_hedge_settlement':hedges[r['currency']]+=D(r['amount'])
                 elif decision!='asset_settlement':issues.append('OTC settlement needs asset/hedge allocation: '+r['transaction_no'])
+            elif decision=='trading_profit':
+                outside_profits[r['currency']]+=D(r['amount'])
             elif decision=='asset_settlement':
                 if all(review.get(k) is not None for k in ['opening_value','opening_currency','opening_as_of']):
                     rate=fx_rate(baseline,review['opening_currency'],'CZK')
@@ -374,7 +377,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
             total+=D(attribution['total_pnl'])
         elif b or e or flows[ccy]:all_rates=False
         if asset is not None:all_gains+=asset
-        residual=native-native_asset[ccy]-futures[ccy]
+        residual=native-native_asset[ccy]-futures[ccy]-outside_profits[ccy]
         instrument_complete=all(p['quantity_status']!='Review required' for p in assets if p['currency']==ccy)
         currencies.append({'currency':ccy,'opening_native':str(b),'closing_native':str(e),
                            'native_asset_pnl':str(native) if ccy not in uncertain else None,'asset_contribution_czk':text(asset) if ccy not in uncertain else None,
@@ -384,6 +387,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
                            'currency_move_percent':text((x1/x0-1)*100) if x0 and x1 else None,
                            'missing_flow_fx_dates':sorted(set(missing)), 'futures_settlements_native':str(futures[ccy]),
                            'fx_hedge_settlements_native':str(hedges[ccy]),
+                           'outside_trading_profit_native':str(outside_profits[ccy]),
                            'cash_deposit_income_costs_native':str(residual) if instrument_complete and ccy not in uncertain else None,
                            'bank_payment_total_native':str(sum((D(f['amount']) for f in flows[ccy] if f['kind']=='bank_payment'),ZERO))})
     adjustments=internal_fx_adjustments(flows,historical_fx)
@@ -420,6 +424,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
     no_open_margined=not any('future' in p['description'].casefold() and p['quantity'] for p in current)
     if no_open_margined:
         for c,v in futures.items():realized_totals[c]+=v
+    for c,v in outside_profits.items():realized_totals[c]+=v
     # A same-currency bank payment is funding, not performance. Cross-currency
     # FX legs cancel at portfolio level at the selected independent dated fix.
     usable=not pending and not prior_pending and not uncertain and all(p['value'] is not None for p in current) and all(
@@ -472,6 +477,7 @@ def period_view(previous,snapshot,activity,rates,cash_reviews=None,activity_conf
                 if r['category']=='transfer_review':
                     review=decisions.get(r['id'],{});decision=review.get('classification')
                     if decision is None:review_pending=True
+                    elif decision=='trading_profit':continue
                     elif decision!='external_funding':
                         if (decision=='asset_settlement' and review.get('opening_as_of')==start and
                                 review.get('opening_value') is not None and review.get('opening_currency')):
