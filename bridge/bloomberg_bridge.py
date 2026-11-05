@@ -59,7 +59,7 @@ def request_history(requests):
     if not isinstance(requests,list) or len(requests)>500:raise ValueError('Invalid historical price request list')
     wanted={r['security']:set(r['dates']) for r in requests}
     if not wanted:return []
-    from datetime import date
+    from datetime import date, timedelta
     import re
     option=re.compile(r'[A-Z0-9]{1,8} [A-Z]{2} \d{2}/\d{2}/\d{2} [CP]\d+(?:\.\d+)? (?:Equity|Index)')
     for security,days in wanted.items():
@@ -79,7 +79,10 @@ def request_history(requests):
         request.getElement('fields').appendValue('YAS_BOND_ACCRUED')
         request.getElement('fields').appendValue('INT_ACC')
         days=[day for values in wanted.values() for day in values]
-        request.set('startDate',min(days).replace('-',''));request.set('endDate',max(days).replace('-',''))
+        # Give Bloomberg a prior observation to fill weekends, holidays and
+        # sparse option trading dates. Only explicitly requested dates upload.
+        first=date.fromisoformat(min(days))-timedelta(days=31)
+        request.set('startDate',first.strftime('%Y%m%d'));request.set('endDate',max(days).replace('-',''))
         request.set('periodicitySelection','DAILY')
         request.set('nonTradingDayFillOption','ALL_CALENDAR_DAYS')
         request.set('nonTradingDayFillMethod','PREVIOUS_VALUE')
