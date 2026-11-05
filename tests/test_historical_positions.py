@@ -26,21 +26,37 @@ class HistoricalPositionTests(unittest.TestCase):
 
     def tearDown(self):self.temp.cleanup()
 
-    def test_exact_snapshot_is_never_relabelled_as_reconstructed(self):
+    def test_exact_bank_snapshot_does_not_supply_market_prices(self):
         store=SnapshotStore(self.db);store.import_content(sample())
         result=selection(store,'2026-10-08')
-        self.assertEqual(result['selection'],'exact_snapshot')
+        self.assertEqual(result['selection'],'reconstruction_pending')
         self.assertEqual(result['positions_as_of'],'2026-10-08')
-        self.assertEqual(result['snapshot']['as_of'],'2026-10-08')
+        self.assertIsNone(result['snapshot'])
+        self.assertTrue(result['missing_market_data'])
 
-    def test_missing_market_data_uses_flagged_source_estimate(self):
+    def test_live_uses_fresh_quotes_and_never_historical_price_fallback(self):
+        from datetime import date
+        from src.market_performance import live_performance
+        ActivityStore(self.db).import_content(account_csv([],opening='100',start='2026-01-01',until='2026-01-05'))
+        quotes=[dict(security=s,price=p,currency=c,stale=False,observed_at='2026-01-05T12:00:00Z')
+                for s,p,c in [('/isin/'+ISIN,'90','USD'),('USDCZK Curncy','21','CZK')]]
+        current=live_performance(self.db,{'quotes':quotes},date(2026,1,5))
+        self.assertIsNotNone(current['snapshot'])
+        self.assertEqual(Decimal(next(p['price'] for p in current['reconstruction']['positions'] if p['key']==ISIN)),90)
+        HistoryStore(self.db).ingest({'quotes':[{'security':'/isin/'+ISIN,'date':'2026-01-05','price':'999'}]},[{'security':'/isin/'+ISIN,'dates':['2026-01-05']}])
+        quotes[0]['stale']=True
+        stale=live_performance(self.db,{'quotes':quotes},date(2026,1,5))
+        self.assertIsNone(stale['snapshot'])
+        self.assertIsNone(stale['indicative']['estimated_ytd_pnl_czk'])
+        self.assertEqual(stale['indicative']['fallback_price_count'],0)
+
+    def test_missing_market_data_blocks_pnl_without_source_estimate(self):
         result=view(SnapshotStore(self.db),'2026-01-02')
-        self.assertEqual(result['selection'],'reconstructed_provisional')
-        self.assertIsNotNone(result['accounting']['ytd_pnl_czk'])
-        self.assertFalse(result['accounting']['portfolio_pnl_verified'])
+        self.assertEqual(result['selection'],'reconstruction_pending')
+        self.assertIsNone(result['accounting'])
         self.assertTrue(any('/isin/'+ISIN in r['security'] for r in result['market_requests']))
-        self.assertTrue(any('USDCZK Curncy' in item for item in result['review_flags']))
-        self.assertEqual(next(p for p in result['positions'] if p['isin']==ISIN)['quantity_or_balance'],'1')
+        self.assertTrue(any('USDCZK Curncy' in item for item in result['missing_market_data']))
+        self.assertEqual(next(p for p in result['positions'] if p['isin']==ISIN)['quantity'],'1')
 
     def test_deposit_opened_after_year_end_is_retained(self):
         row=posting('-50',number='DEP',kind='New Investment Money Market',
@@ -54,6 +70,8 @@ class HistoricalPositionTests(unittest.TestCase):
     def test_unsettled_purchase_estimate_includes_payable_once(self):
         buy=posting('-71',number='BUY',Description3='Number/Amt. 1; Transaction price: 70 USD')
         ActivityStore(self.db).import_content(account_csv([buy],opening='100'))
+        requests=[{'security':s,'dates':['2026-01-03','2026-01-05']} for s in ['/isin/'+ISIN,'USDCZK Curncy']]
+        HistoryStore(self.db).ingest({'quotes':[{'security':r['security'],'date':day,'price':'70' if r['security'].startswith('/isin/') else '20'} for r in requests for day in r['dates']]},requests)
         result=view(SnapshotStore(self.db),'2026-01-03')
         a=result['accounting']
         self.assertIsNotNone(a['ytd_pnl_czk'])
@@ -84,14 +102,13 @@ class HistoricalPositionTests(unittest.TestCase):
         self.assertEqual(Decimal(cash['quantity']),29)
         self.assertEqual(Decimal(result['snapshot']['summary']['market_value']),Decimal(209)*21)
 
-    def test_source_price_proxy_is_visible_and_provisional(self):
+    def test_fx_alone_does_not_enable_a_source_price_proxy(self):
         requests=[{'security':'USDCZK Curncy','dates':['2026-01-02']}]
         HistoryStore(self.db).ingest({'quotes':[{'security':'USDCZK Curncy','date':'2026-01-02','price':'21'}]},requests)
         result=view(SnapshotStore(self.db),'2026-01-02')
-        self.assertEqual(result['selection'],'reconstructed_provisional')
-        self.assertIsNotNone(result['accounting']['ytd_pnl_czk'])
-        self.assertTrue(result['accounting']['provisional'])
-        self.assertTrue(any('Review required' in item for item in result['review_flags']))
+        self.assertEqual(result['selection'],'reconstruction_pending')
+        self.assertIsNone(result['accounting'])
+        self.assertTrue(any('Bloomberg PX_LAST' in item for item in result['missing_market_data']))
 
     def test_audited_option_terms_are_immutable(self):
         store=HistoricalTermsStore(self.db)
@@ -130,7 +147,7 @@ class HistoricalPositionTests(unittest.TestCase):
             self.assertEqual(error.exception.code,403)
             with urlopen(Request(root+'/api/positions/history',data=body,headers={
                     'Content-Type':'application/json','X-Historical-Action':'request'})) as response:
-                self.assertEqual(json.load(response)['selection'],'reconstructed_provisional')
+                self.assertEqual(json.load(response)['selection'],'reconstruction_pending')
             with urlopen(root+'/api/positions/history?as_of=2026-01-02') as response:
                 self.assertEqual(json.load(response)['positions_as_of'],'2026-01-02')
             self.assertEqual(HistoricalRequestStore(self.db).dates(),['2026-01-02'])

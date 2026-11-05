@@ -52,7 +52,7 @@ class HistoricalRequestStore:
     def history_requests(self):
         merged=defaultdict(set)
         for day in self.dates():
-            for row in reconstruct(self.path,day,False)['market_requests']:
+            for row in reconstruct(self.path,day,False,strict_market=True)['market_requests']:
                 merged[row['security']].update(row['dates'])
         return [{'security':security,'dates':sorted(days)} for security,days in sorted(merged.items())]
 
@@ -171,7 +171,7 @@ def _accrued_proxy(key,requested,opening,source,quantity):
     return value,(None if reason is None else reason.replace('price','accrued-interest'))
 
 
-def reconstruct(path,requested,require_market_data=True):
+def reconstruct(path,requested,require_market_data=True,strict_market=False,live_quotes=None):
     """Rebuild quantities and balances at a cutoff; never borrow later quantities."""
     cutoff=_date(requested)
     if cutoff>date.today():raise ValueError('Historical date cannot be in the future')
@@ -189,6 +189,14 @@ def reconstruct(path,requested,require_market_data=True):
     quantities={key:D(p['quantity']) for key,p in opening.items()}
     descriptions={key:p['description'] for key,p in opening.items()};currencies={key:p['currency'] for key,p in opening.items()}
     issues=[]
+    if strict_market:
+        from .cash_review import CashReviewStore
+        confirmed=CashReviewStore(path).all()
+        for r in (activity or {}).get('ledger',[]):
+            decision=confirmed.get(r['id'],{})
+            if (decision.get('classification')=='asset_settlement' and decision.get('opening_as_of')==baseline['as_of']
+                    and decision.get('opening_value') and r['booking_date']>requested):
+                issues.append('Outside-bank opening asset is not yet settled; a Bloomberg-valued position is required before '+r['booking_date'])
     trades=[r for r in records if r['category'] in {'security_trade','security_redemption'} and
             baseline['as_of']<r['trade_date']<=requested and r['id'] not in retired and not is_future(r)]
     for row in sorted(trades,key=lambda r:(r['trade_date'],r['trade_time'] or '',r['booking_date'],r['id'])):
@@ -207,6 +215,11 @@ def reconstruct(path,requested,require_market_data=True):
         if later:issues.append(key+': executions after settlement confirmation require review')
         elif key in quantities:quantities[key]=ZERO
     observations=HistoryStore(path).observations();terms=HistoricalTermsStore(path).all()
+    if strict_market:
+        observations={k:v for k,v in observations.items() if v.get('source','').startswith('Bloomberg')}
+    if live_quotes is not None:
+        observations={(s,requested):{'price':D(q['price']),'accrued':None,'currency':q.get('currency')}
+                      for s,q in live_quotes.items()}
     market_requests=defaultdict(set);missing=[];reviews=[];positions=[];fx={};active=set()
     for key,quantity in sorted(quantities.items()):
         if not quantity:continue
@@ -221,12 +234,13 @@ def reconstruct(path,requested,require_market_data=True):
             if scale is not None:reviews.append(key+f': Review required — contract multiplier {scale} inferred from UBS net settlements.')
         bond=scale==D('0.01');absent=[]
         price=observation['price'] if observation else None
+        if observation and observation.get('currency') not in (None,currency):price=None
         if price is None:
-            price,reason=_price_proxy(key,requested,opening,source,records)
+            price,reason=(None,None) if strict_market else _price_proxy(key,requested,opening,source,records)
             if price is None:absent.append('Bloomberg PX_LAST')
             else:reviews.append(key+': Review required — '+reason)
         if not security:
-            reviews.append(key+': Bloomberg identifier mapping missing; source-price estimate only.')
+            reviews.append(key+': Bloomberg identifier mapping missing.')
         if scale is None:absent.append('verified contract multiplier')
         accrued=observation['accrued'] if observation else None
         if bond and accrued is None:
@@ -269,12 +283,17 @@ def reconstruct(path,requested,require_market_data=True):
             'currency':currency,'quantity':str(balance),'price':'1','price_convention':'amount','scale':'1',
             'accrued_native':'0','market_value_native':str(balance),'missing':[]})
     reviews.append('Cash/deposit accrued interest is not estimated between bank snapshots; posted income is included in cash.')
+    if strict_market:
+        active.update(r['currency'] for r in records if baseline['as_of']<r['booking_date']<=requested and D(r['amount']))
+        active.update(p['currency'] for p in baseline['positions'] if D(p['market_value_native']) or D(p['accrued_native']))
     for currency in sorted(active):
         if currency=='CZK':fx['CZK/CZK']='1';continue
-        if not any(p['currency']==currency and D(p['quantity']) for p in positions):continue
+        if not strict_market and not any(p['currency']==currency and D(p['quantity']) for p in positions):continue
         security=currency+'CZK Curncy';market_requests[security].add(requested);observation=observations.get((security,requested))
-        if observation:fx[currency+'/CZK']=str(observation['price'])
+        if observation and observation.get('currency') in (None,'CZK') and observation['price']>0:fx[currency+'/CZK']=str(observation['price'])
         else:
+            if strict_market:
+                missing.append(security+': Bloomberg PX_LAST');continue
             points=[(day,obs['price']) for (sec,day),obs in observations.items() if sec==security]
             for source in (baseline,prior_snapshot,latest):
                 if source:
@@ -317,7 +336,7 @@ def reconstruct(path,requested,require_market_data=True):
         'metadata_snapshot_as_of':(latest or {}).get('as_of')}
 
 
-def selection(store,requested=None):
+def selection(store,requested=None,strict_market=True):
     dates=store.available_dates()
     if requested is None:
         snapshot=store.latest();actual=snapshot['as_of'] if snapshot else None
@@ -326,11 +345,11 @@ def selection(store,requested=None):
             'message':'Showing the latest stored UBS snapshot dated '+actual+'.' if snapshot else 'No UBS positions snapshot has been imported.',
             'snapshot':snapshot,'source_snapshot_as_of':actual,'missing_market_data':[],'issues':[],'review_flags':[]}
     _date(requested);exact=store.at_or_before(requested)
-    if exact and exact['as_of']==requested:
+    if not strict_market and exact and exact['as_of']==requested:
         return {'requested_as_of':requested,'positions_as_of':requested,'snapshot_as_of':requested,
             'selection':'exact_snapshot','available_dates':dates,'message':'Showing the stored UBS snapshot for '+requested+'.',
             'snapshot':exact,'source_snapshot_as_of':requested,'missing_market_data':[],'issues':[],'review_flags':[]}
-    rebuilt=reconstruct(store.path,requested);available=rebuilt['snapshot'] is not None
+    rebuilt=reconstruct(store.path,requested,strict_market=strict_market);available=rebuilt['snapshot'] is not None
     provisional=available and bool(rebuilt['review_flags'])
     return {'requested_as_of':requested,'positions_as_of':requested,'snapshot_as_of':requested if available else None,
         'selection':'reconstructed_provisional' if provisional else 'reconstructed' if available else 'reconstruction_pending','available_dates':dates,
@@ -369,11 +388,15 @@ def historical_accounting(path,snapshot,review_flags):
         accounting['portfolio_pnl_verified']=False
         accounting['provisional']=True
         accounting['issues']=list(accounting.get('issues',[]))+list(review_flags)
+    from .trade_calculations import calculate_trades
+    from .cash_review import CashReviewStore
+    accounting['trade_calculations']=calculate_trades(snapshot,BaselineStore(path).latest(snapshot['as_of']),
+        ActivityStore(path).view(snapshot),accounting,CashReviewStore(path).all(),LifecycleStore(path).all())
     return accounting
 
 
-def view(store,requested=None):
-    result=selection(store,requested);snapshot=result.pop('snapshot')
+def view(store,requested=None,strict_market=True):
+    result=selection(store,requested,strict_market);snapshot=result.pop('snapshot')
     if not snapshot:return result|{'exported_at':None,'valuation_currency':'CZK','summary':None,
         'positions':result.pop('reconstructed_positions',[]),'accounting':None,
         'valuation_basis':'Quantities and cash are reconstructed; total P/L waits for all required historical market inputs.'}
@@ -381,7 +404,8 @@ def view(store,requested=None):
     accounting=historical_accounting(store.path,snapshot,result.get('review_flags',[]))
     return result|{'exported_at':snapshot['exported_at'],'valuation_currency':snapshot['valuation_currency'],
         'summary':snapshot['summary'],'positions':positions,'accounting':accounting,
-        'valuation_basis':('Stored UBS quantities, prices, accrued interest and FX.' if result['selection']=='exact_snapshot' else
+        'valuation_basis':('Bloomberg prices and FX only; recorded transactions and balances. Any estimated bond accrual is flagged.' if strict_market and requested else
+        'Stored UBS quantities, prices, accrued interest and FX.' if result['selection']=='exact_snapshot' else
         'Prior year-end UBS statement plus dated UBS transactions; available Bloomberg history and explicitly flagged source-data estimates.'
         if result['selection']=='reconstructed_provisional' else
         'Prior year-end UBS statement plus dated UBS transactions; Bloomberg PX_LAST, bond accrued interest and FX at the selected date.')}

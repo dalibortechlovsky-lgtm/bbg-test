@@ -12,6 +12,7 @@ from .storage import SnapshotStore, DEFAULT_DB
 from .quotes import QuoteStore
 from .analytics import portfolio_analytics
 from .indicative import indicative_ytd
+from .market_performance import live_performance
 from .historical_terms import HistoricalTermsStore
 from .performance import PerformanceStore, calculate_performance, HEADERS as PERFORMANCE_HEADERS
 from .risk import RiskStore, derivatives_risk, HEADERS as RISK_HEADERS
@@ -119,7 +120,14 @@ class Handler(BaseHTTPRequestHandler):
                 query=parse_qs(urlsplit(self.path).query)
                 values=query.get('as_of',[])
                 if len(values)>1:raise ValueError('Select one historical date')
-                chosen=historical_selection(self.store,values[0] if values else None) if self.store else None
+                live_report=None
+                if self.store and not values:
+                    live_report=live_performance(self.store.path,self.quote_store.view() if self.quote_store else {'quotes':[]})
+                    chosen={'snapshot':live_report['snapshot'],'selection':'reconstructed_provisional',
+                        'requested_as_of':live_report['indicative']['as_of'],
+                        'review_flags':live_report['reconstruction']['review_flags'],
+                        'message':'Bloomberg live prices and FX; corrected trade calculations. '+ '; '.join(live_report['indicative']['blockers'])}
+                else:chosen=historical_selection(self.store,values[0] if values else None) if self.store else None
                 snapshot=(chosen or {}).pop('snapshot',None)
                 if not snapshot:raise ValueError((chosen or {}).get('message','Import holdings before exporting a report'))
                 historical=bool(values)
@@ -157,6 +165,7 @@ class Handler(BaseHTTPRequestHandler):
             performance,ptd,activity=self.performance_state(snapshot,bloomberg)
             baseline=BaselineStore(self.store.path).latest(snapshot['as_of']) if self.store and snapshot else None
             accounting=accounting_view(self.store.path,snapshot) if self.store else None
+            live=live_performance(self.store.path,bloomberg) if self.store and baseline else None
             external=ExternalPositionStore(self.store.path).view(snapshot,bloomberg) if self.store else None
             ubs_aum=(accounting or {}).get('nav_czk');other_aum=(external or {}).get('aum_czk')
             consolidated=str(Decimal(ubs_aum)+Decimal(other_aum)) if ubs_aum is not None and other_aum is not None else None
@@ -172,8 +181,7 @@ class Handler(BaseHTTPRequestHandler):
                 'ptd':ptd,
                 'activity':activity,
                 'accounting':accounting,
-                'indicative':indicative_ytd(snapshot,accounting,bloomberg,
-                    HistoricalTermsStore(self.store.path).all() if self.store else {},activity),
+                'indicative':live['indicative'] if live else None,
                 'external_positions':external,
                 'aum':{'ubs_czk':ubs_aum,'other_banks_czk':other_aum,'consolidated_czk':consolidated,
                        'valuation_dates':valuation_dates,'mixed_valuation_dates':len(valuation_dates)>1,

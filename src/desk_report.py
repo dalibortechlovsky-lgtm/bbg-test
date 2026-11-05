@@ -12,6 +12,16 @@ def desk_csv(data):
              'market_price_native','average_cost_native','market_value_eur','asset_pnl_native','asset_contribution_czk','currency_contribution_czk','total_pnl_czk','realized_native','income_native','status']
     writer.writerow(columns)
     def emit(row):writer.writerow([spreadsheet(row.get(c)) for c in columns])
+    corrected=a.get('trade_calculations')
+    if corrected:
+        for p in corrected['positions']:
+            emit({'section':'CORRECTED TRADE','as_of':a['as_of'],'description':p['description'],
+                  'currency':p['currency'],'quantity':p['quantity'],'asset_pnl_native':p['pnl_native'],
+                  'total_pnl_czk':p['pnl_czk'],'status':p['status']+(' · '+p['closed_on'] if p['closed_on'] else '')})
+        for key in ['open_subtotal_czk','closed_subtotal_czk','ytd_pnl_czk','reconciliation_difference_czk']:
+            emit({'section':'CORRECTED TOTAL','as_of':a['as_of'],'description':key,'total_pnl_czk':corrected[key]})
+        for key in ['income_czk','fees_czk','portfolio_fx_czk','other_balances_czk','pooled_margin_czk']:
+            emit({'section':'SEPARATE COMPONENT','as_of':a['as_of'],'description':key,'total_pnl_czk':corrected['components'].get(key,'0')})
     selection=data.get('snapshot_selection') or {}
     if selection.get('requested_as_of'):
         emit({'section':'REQUESTED DATE','as_of':selection['requested_as_of'],
@@ -95,6 +105,18 @@ body{font:12px Arial;color:#202020;margin:24px auto;padding:20px;max-width:1100p
         kind='no activity' if confirmation['kind']=='no_activity' else 'no further transactions beyond supplied exports'
         parts.append('<p class="notes">Owner-confirmed coverage: '+e(confirmation['currency']+' · '+confirmation['from']+' to '+confirmation['until']+' · '+kind)+'. '+e(confirmation['reason'])+'</p>')
     parts.append('<table class="summary"><tr><th>Net asset value CZK · incl. accrued interest</th>'+cell(a.get('nav_czk'),highlight=False)+'</tr><tr><th>YTD P/L CZK</th>'+cell(a['ytd_pnl_czk'])+'</tr></table>')
+    corrected=a.get('trade_calculations')
+    if corrected:
+        parts.append('<h2>Corrected trade calculations · valuation-date FX</h2><p class="notes">'+e(corrected['basis'])+'</p><table>')
+        for label,key in [('Open trades + portfolio FX / costs','open_subtotal_czk'),('Closed trades + income / pooled margin','closed_subtotal_czk'),('Combined YTD','ytd_pnl_czk'),('Difference to NAV','reconciliation_difference_czk')]:
+            parts.append('<tr><th>'+label+'</th>'+cell(corrected[key])+'</tr>')
+        parts.append('</table><table><tr><th>Trade</th><th>Currency</th><th>Status / close date</th><th>Native P/L</th><th>P/L CZK</th></tr>')
+        for p in corrected['positions']:
+            parts.append('<tr><td>'+e(p['description'])+'</td><td>'+e(p['currency'])+'</td><td>'+e(p['status']+' '+(p['closed_on'] or ''))+'</td>'+cell(p['pnl_native'])+cell(p['pnl_czk'])+'</tr>')
+        parts.append('</table><table>')
+        for label,key in [('Income','income_czk'),('Fees / debit interest','fees_czk'),('Portfolio FX','portfolio_fx_czk'),('Other balance movement','other_balances_czk'),('Pooled futures margin','pooled_margin_czk')]:
+            parts.append('<tr><th>'+label+'</th>'+cell(corrected['components'].get(key,'0'))+'</tr>')
+        parts.append('</table>')
     bridge=a.get('nav_bridge')
     if bridge:
         parts.append('<p class="notes">YTD = closing NAV − adjusted opening value − net external funding. Positive funding means deposits into the portfolio; withdrawals are negative. '+e(bridge['basis'])+'</p>')

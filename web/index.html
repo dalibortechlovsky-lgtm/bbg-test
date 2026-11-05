@@ -22,11 +22,12 @@
 <div class="grid">
 <div><small>Estimated YTD P/L · CZK</small><p id="estimate-ytd" class="metric">—</p></div>
 <div><small>Estimated UBS net assets · CZK</small><p id="estimate-nav" class="metric">—</p></div>
-<div><small>Market change since accounting anchor · CZK</small><p id="estimate-change" class="metric">—</p></div>
+<div><small>Difference to NAV check · CZK</small><p id="estimate-change" class="metric">—</p></div>
 </div>
 <p id="estimate-time" class="muted"></p>
 <p id="estimate-coverage" class="muted"></p>
-<p>Estimated on known holdings and supported recorded transactions, assuming no unrecorded activity. Accrued interest is carried forward; unrecorded income and costs are not estimated.</p>
+<p>Recorded trades and balances valued with Bloomberg prices and FX. Missing prices block the total. Unrecorded activity is excluded; any estimated accrued interest is flagged.</p>
+<div id="live-trade-calculations"></div>
 <ul id="estimate-blockers" class="tag"></ul>
 <details><summary>Estimate assumptions and pricing coverage</summary>
 <p id="estimate-basis" class="muted"></p><ul id="estimate-warnings" class="muted"></ul>
@@ -69,7 +70,8 @@
 </details>
 </section>
 <section class="card">
-<h2>Portfolio P&amp;L</h2>
+<h2>UBS snapshot reconciliation</h2>
+<p class="muted">Audit view at the imported bank snapshot date. Use the Bloomberg estimate above or the as-of view for corrected trade calculations at Bloomberg prices and FX.</p>
 <p id="desk-date" class="muted">Import UBS data to get started.</p>
 <p id="desk-status" class="tag">
 </p>
@@ -135,7 +137,7 @@
 </details>
 </section>
 <section class="card">
-<h2>Trading positions</h2>
+<h2>UBS snapshot attribution · audit detail</h2>
 <p class="muted">Carried holdings show price returns against the year-start market price; new holdings use remaining average acquisition cost. Income is included in asset P/L. Cash and deposits are covered in the portfolio totals above.</p>
 <label>Show <select id="desk-position-filter">
 <option value="open">Open positions</option>
@@ -163,7 +165,7 @@
 </section>
 <section class="card">
 <h2>Positions and P&amp;L as of a date</h2>
-<p class="muted">The platform reconstructs quantities and cash from the year-end UBS statement and dated UBS transactions. Bloomberg supplies historical closing prices, bond accrued interest and FX. A stored UBS snapshot is used when the selected date has one.</p>
+<p class="muted">Recorded transactions reconstruct quantities and cash. Bloomberg supplies the selected date's closing prices and FX, including dates with a bank snapshot. Missing Bloomberg prices are never replaced with bank marks or interpolated prices. Bond accrual estimates are flagged.</p>
 <p><label>As of <input id="history-date" type="date"></label> <button id="history-load">Reconstruct and request Bloomberg data</button></p>
 <p id="history-status" class="tag">Select a date.</p>
 <p id="history-context" class="muted"></p>
@@ -175,6 +177,7 @@
 <div><small>Historical YTD P/L · CZK</small><p id="history-ytd" class="metric">—</p></div>
 </div>
 <p id="history-formula" class="muted"></p>
+<div id="history-trade-calculations"></div>
 <div class="scroll"><table><thead><tr><th>External-flow date</th><th>Reference</th><th>Native amount</th><th>FX to CZK</th><th>Funding in CZK</th></tr></thead><tbody id="history-flows"></tbody></table></div>
 <div class="scroll"><table><thead><tr><th>Instrument / account</th><th>Currency</th><th>Quantity / balance</th><th>Historical price</th><th>Accrued native</th><th>Historical value</th><th>Status</th></tr></thead><tbody id="history-positions"></tbody></table></div>
 <ul id="history-missing" class="tag"></ul>
@@ -741,23 +744,36 @@ const amount=value=>value===null||value===undefined?'—':new Intl.NumberFormat(
 function row(target,values){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td)}target.append(tr)}
 function numericRow(target,values,numeric=[]){row(target,values);const cells=el(target.id).lastElementChild.children;for(const index of numeric){cells[index].classList.add('num');const value=Number(String(values[index]).replace(/[^0-9.-]/g,''));if(Number.isFinite(value)&&values[index]!=='—')cells[index].classList.add(value<0?'negative':'positive')}}
 function renderDeskAssets(){el('desk-assets').replaceChildren();const filter=el('desk-position-filter').value;for(const p of state.accounting?.assets||[]){if(filter==='open'&&!Number(p.quantity)||filter==='closed'&&Number(p.quantity))continue;numericRow(el('desk-assets'),[p.description+' · '+p.currency,money(p.quantity),p.native_price_return_percent===null?'—':money(p.native_price_return_percent)+'%',money(p.ytd_asset_pnl_native),money(p.asset_contribution_czk),money(p.realized_native),p.quantity_status],[1,2,3,4,5])}}
+function renderCorrectedTrades(id,a){
+ const target=el(id);target.replaceChildren();if(!a)return;
+ const title=document.createElement('h3');title.textContent='Corrected trades · valuation-date FX';target.append(title);
+ const summary=document.createElement('p');summary.textContent='Open + portfolio FX/costs: '+money(a.open_subtotal_czk)+' CZK · Closed + income/pooled margin: '+money(a.closed_subtotal_czk)+' CZK · Total: '+money(a.ytd_pnl_czk)+' CZK';target.append(summary);
+ const details=document.createElement('details'),heading=document.createElement('summary');heading.textContent='Trade rows and separate portfolio components';details.append(heading);
+ const table=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody');row(head,['Trade / currency','Status / close date','Quantity','Native P/L','P/L CZK']);table.append(head,body);
+ for(const p of a.positions||[])row(body,[p.description+' · '+p.currency,p.status+(p.closed_on?' · '+p.closed_on:''),money(p.quantity),money(p.pnl_native),money(p.pnl_czk)]);
+ for(const [label,key] of [['Income','income_czk'],['Fees / debit interest','fees_czk'],['Portfolio FX','portfolio_fx_czk'],['Other balances','other_balances_czk'],['Pooled futures margin','pooled_margin_czk']])row(body,[label,'Separate portfolio component','','',money(a.components?.[key])]);
+ const scroll=document.createElement('div');scroll.className='scroll';scroll.append(table);details.append(scroll);target.append(details);
+ const basis=document.createElement('p');basis.className='muted';basis.textContent=a.basis;target.append(basis);
+ for(const issue of a.issues||[]){const p=document.createElement('p');p.className='tag';p.textContent=issue;target.append(p);}
+}
 function renderEstimate(){
  const a=state.indicative;
+ renderCorrectedTrades('live-trade-calculations',a?.trade_calculations);
  el('estimate-status').textContent=a?.status||'An opening portfolio and accounting anchor are required.';
  el('estimate-ytd').textContent=money(a?.estimated_ytd_pnl_czk);
  el('estimate-nav').textContent=money(a?.estimated_nav_czk);
- el('estimate-change').textContent=money(a?.market_change_czk);
+ el('estimate-change').textContent=money(a?.trade_calculations?.reconciliation_difference_czk);
  el('estimate-time').textContent=a?'Accounting anchor: '+a.anchor_as_of+' · Bloomberg receipts: '+(a.quote_time_from?new Date(a.quote_time_from).toLocaleString()+' – '+new Date(a.quote_time_to).toLocaleString():'none fresh')+' · Refreshes every 30 seconds.':'';
- el('estimate-coverage').textContent=a?a.fresh_price_count+' / '+a.security_count+' securities repriced; '+a.fallback_price_count+' retain anchor prices. '+a.fresh_fx_position_count+' positions use fresh FX.':'';
+ el('estimate-coverage').textContent=a?a.fresh_price_count+' / '+a.security_count+' securities have fresh Bloomberg prices. No bank-price fallback.':'';
  el('estimate-basis').textContent=a?.basis||'';
  for(const [id,values] of [['estimate-blockers',a?.blockers],['estimate-warnings',a?.warnings]]){
   el(id).replaceChildren();for(const text of values||[]){const li=document.createElement('li');li.textContent=text;el(id).append(li)}
  }
  el('estimate-positions').replaceChildren();
- for(const p of a?.positions||[])row(el('estimate-positions'),[p.description,p.currency,money(p.change_czk),p.price_observed_at?new Date(p.price_observed_at).toLocaleString():'Anchor value',p.notes.join('; ')]);
+ for(const p of a?.positions||[])row(el('estimate-positions'),[p.description,p.currency,money(p.change_czk),p.price_observed_at?new Date(p.price_observed_at).toLocaleString():'See Bloomberg coverage',p.notes.join('; ')]);
 }
 function renderExternal(){el('aum-total').textContent=money(state.aum?.consolidated_czk);el('aum-ubs').textContent=money(state.aum?.ubs_czk);el('aum-other').textContent=money(state.aum?.other_banks_czk);const dates=state.aum?.valuation_dates?.join(', ')||'none';el('aum-basis').textContent=(state.aum?.basis||'')+' Valuation dates: '+dates+(state.aum?.mixed_valuation_dates?' (mixed-date AUM). ':' · ')+(state.external_positions?.basis||'');el('external-positions').replaceChildren();for(const p of state.external_positions?.positions||[])row(el('external-positions'),[p.institution+' · '+p.portfolio,p.as_of,p.description+' · '+p.currency,amount(p.value_native_including_accrued)+' '+p.currency,money(p.value_czk),p.fx_source?p.fx_source+' · '+p.fx_as_of:'FX unavailable']);if(!state.external_positions?.positions?.length)row(el('external-positions'),['No other-bank snapshots imported.'])}
-function renderHistorical(data){historicalState=data;el('history-positions').replaceChildren();el('history-flows').replaceChildren();el('history-missing').replaceChildren();el('history-status').textContent=data.message||'Historical view unavailable.';el('history-context').textContent='Requested date: '+(data.requested_as_of||'—')+' · Positions/valuation date: '+(data.positions_as_of||'unavailable')+' · Source UBS snapshot: '+(data.source_snapshot_as_of||'none')+' · '+(data.valuation_basis||'');const bridge=data.accounting?.nav_bridge;el('history-opening-nav').textContent=money(bridge?.opening_nav_czk);el('history-opening-basis').textContent=money(bridge?.transferred_opening_basis_czk);el('history-funding').textContent=money(bridge?.net_external_flows_czk);el('history-nav').textContent=money(data.accounting?.nav_czk);el('history-ytd').textContent=money(data.accounting?.ytd_pnl_czk);el('history-formula').textContent=bridge?'YTD P/L = closing net assets − adjusted opening value − net external funding. Adjusted opening value includes confirmed year-end values of instruments held elsewhere that settled into UBS.':'';for(const f of bridge?.external_flows||[])row(el('history-flows'),[f.date,f.reference,amount(f.amount_native)+' '+f.currency,amount(f.fx_to_czk),amount(f.amount_czk)]);if(bridge&&!bridge.external_flows.length)row(el('history-flows'),['No external funding in the selected period.']);for(const p of data.positions||[]){const quantity=p.quantity??p.quantity_or_balance;const price=p.price??p.market_price?.value;const accrued=p.accrued_native??p.accrued_interest;const value=p.market_value_native??p.market_value;const missing=p.missing||[];const reviews=p.review_required||[];row(el('history-positions'),[p.description,p.currency,amount(quantity),amount(price)+(p.price_convention==='percent'||p.market_price?.convention==='percent'?'%':''),amount(accrued),amount(value),missing.length?missing.join(', '):reviews.length?'Review required':'Available'])}const notices=[...(data.missing_market_data||[]),...(data.issues||[]),...(data.review_flags||[]),...(data.accounting?.issues||[])];for(const item of [...new Set(notices)]){const li=document.createElement('li');li.textContent=item;el('history-missing').append(li)}}
+function renderHistorical(data){historicalState=data;renderCorrectedTrades('history-trade-calculations',data.accounting?.trade_calculations);el('history-positions').replaceChildren();el('history-flows').replaceChildren();el('history-missing').replaceChildren();el('history-status').textContent=data.message||'Historical view unavailable.';el('history-context').textContent='Requested date: '+(data.requested_as_of||'—')+' · Positions/valuation date: '+(data.positions_as_of||'unavailable')+' · Source UBS snapshot: '+(data.source_snapshot_as_of||'none')+' · '+(data.valuation_basis||'');const bridge=data.accounting?.nav_bridge;el('history-opening-nav').textContent=money(bridge?.opening_nav_czk);el('history-opening-basis').textContent=money(bridge?.transferred_opening_basis_czk);el('history-funding').textContent=money(bridge?.net_external_flows_czk);el('history-nav').textContent=money(data.accounting?.nav_czk);el('history-ytd').textContent=money(data.accounting?.ytd_pnl_czk);el('history-formula').textContent=bridge?'YTD P/L = closing net assets − adjusted opening value − net external funding. Adjusted opening value includes confirmed year-end values of instruments held elsewhere that settled into UBS.':'';for(const f of bridge?.external_flows||[])row(el('history-flows'),[f.date,f.reference,amount(f.amount_native)+' '+f.currency,amount(f.fx_to_czk),amount(f.amount_czk)]);if(bridge&&!bridge.external_flows.length)row(el('history-flows'),['No external funding in the selected period.']);for(const p of data.positions||[]){const quantity=p.quantity??p.quantity_or_balance;const price=p.price??p.market_price?.value;const accrued=p.accrued_native??p.accrued_interest;const value=p.market_value_native??p.market_value;const missing=p.missing||[];const reviews=p.review_required||[];row(el('history-positions'),[p.description,p.currency,amount(quantity),amount(price)+(p.price_convention==='percent'||p.market_price?.convention==='percent'?'%':''),amount(accrued),amount(value),missing.length?missing.join(', '):reviews.length?'Review required':'Available'])}const notices=[...(data.missing_market_data||[]),...(data.issues||[]),...(data.review_flags||[]),...(data.accounting?.issues||[])];for(const item of [...new Set(notices)]){const li=document.createElement('li');li.textContent=item;el('history-missing').append(li)}}
 async function loadHistorical(request=false){const day=el('history-date').value;if(!day)return;el('history-load').disabled=true;try{const response=await fetch('/api/positions/history'+(request?'':'?as_of='+encodeURIComponent(day)),request?{method:'POST',headers:{'Content-Type':'application/json','X-Historical-Action':'request'},body:JSON.stringify({as_of:day})}:{});const data=await response.json();if(!response.ok)throw Error(data.error||'Historical reconstruction failed');renderHistorical(data)}catch(error){el('history-status').textContent=error.message}finally{el('history-load').disabled=false}}
 el('history-load').addEventListener('click',()=>loadHistorical(true));
 function renderCashReview(){el('desk-cash-review').replaceChildren();for(const r of state.accounting?.cash_decisions||[]){const tr=document.createElement('tr');for(const value of [r.booking_date+' · '+r.transaction_no,r.description+' · '+r.reference+(r.opening_value?' · Opening basis '+amount(r.opening_value)+' '+r.opening_currency+' at '+r.opening_as_of:''),r.currency,money(r.amount)]){const td=document.createElement('td');td.textContent=value;tr.append(td)}const td=document.createElement('td'),select=document.createElement('select');select.add(new Option('Review needed',''));const choices=r.category==='transfer_review'?[['external_funding','External funding'],['asset_settlement','Trade expiry / settlement'],['trading_profit','Outside trading profit (no principal)']]:[['asset_settlement','Trading result'],['fx_hedge_settlement','FX hedge result']];for(const [value,label] of choices)select.add(new Option(label,value));select.value=r.decision||'';const button=document.createElement('button');button.textContent=r.decision?'Save change':'Confirm';button.addEventListener('click',async()=>{if(!select.value){el('cash-review-message').textContent='Choose the source-confirmed classification first.';return}button.disabled=true;try{const payload={id:r.id,classification:select.value,reason:'Owner confirmed in dashboard: '+select.options[select.selectedIndex].text};if(select.value==='asset_settlement'&&r.opening_value)Object.assign(payload,{opening_value:r.opening_value,opening_currency:r.opening_currency,opening_as_of:r.opening_as_of});const response=await fetch('/api/accounting/cash-review',{method:'POST',headers:{'Content-Type':'application/json','X-Accounting-Action':'manage'},body:JSON.stringify([payload])});const result=await response.json();if(!response.ok)throw Error(result.error||'Review could not be saved');el('cash-review-message').textContent='Decision saved; prior decisions remain in the audit history.';await refresh()}catch(error){el('cash-review-message').textContent=error.message;button.disabled=false}});td.append(select,' ',button);tr.append(td);el('desk-cash-review').append(tr)}}
@@ -789,3 +805,4 @@ refresh();setInterval(refresh,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 </script>
 </html>
+

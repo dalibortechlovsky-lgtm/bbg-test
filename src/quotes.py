@@ -106,6 +106,15 @@ class QuoteStore:
         accounting=accounting_view(self.path,snapshot)
         from .historical_positions import HistoricalRequestStore
         requested=HistoricalRequestStore(self.path).history_requests()
+        from .historical_positions import reconstruct
+        from datetime import date
+        current_requests=reconstruct(self.path,date.today().isoformat(),False,strict_market=True)['market_requests'] if snapshot else []
+        # Exact dated requests also supply the current identifiers, including
+        # options and positions acquired after the last bank snapshot.
+        securities.update(r['security'] for r in current_requests)
+        from .historical_terms import HistoricalTermsStore
+        mapped=HistoricalTermsStore(self.path).all()
+        securities.update(t['security'] for t in mapped.values() if t.get('security'))
         history=defaultdict(set)
         for row in (accounting.get('history_requests',[]) if accounting else [])+requested:
             history[row['security']].update(row['dates'])
