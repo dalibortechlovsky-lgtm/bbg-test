@@ -11,6 +11,8 @@ from io import StringIO
 from .storage import SnapshotStore, DEFAULT_DB
 from .quotes import QuoteStore
 from .analytics import portfolio_analytics
+from .indicative import indicative_ytd
+from .historical_terms import HistoricalTermsStore
 from .performance import PerformanceStore, calculate_performance, HEADERS as PERFORMANCE_HEADERS
 from .risk import RiskStore, derivatives_risk, HEADERS as RISK_HEADERS
 from .report import report_data, report_html, report_csv, mars_report_html, mars_report_csv
@@ -169,6 +171,8 @@ class Handler(BaseHTTPRequestHandler):
                 'ptd':ptd,
                 'activity':activity,
                 'accounting':accounting,
+                'indicative':indicative_ytd(snapshot,accounting,bloomberg,
+                    HistoricalTermsStore(self.store.path).all() if self.store else {},activity),
                 'external_positions':external,
                 'aum':{'ubs_czk':ubs_aum,'other_banks_czk':other_aum,'consolidated_czk':consolidated,
                        'valuation_dates':valuation_dates,'mixed_valuation_dates':len(valuation_dates)>1,
