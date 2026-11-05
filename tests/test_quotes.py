@@ -23,6 +23,14 @@ def payload(at=NOW, price='123.45', status='connected'):
 
 
 class QuoteTests(unittest.TestCase):
+    def test_audited_ticker_mapping_removes_missing_isin_warning(self):
+        from src.historical_terms import HistoricalTermsStore
+        SnapshotStore(self.path).import_content(sample().replace('TEST_OPTION','123456'))
+        self.assertEqual(self.store.watchlist()['unmapped_count'],1)
+        HistoricalTermsStore(self.path).record([dict(key='VALOR:123456',security='SPX US 06/18/26 C6960 Index',
+            unit_scale='100',review_required=False,basis='Synthetic verified contract')])
+        self.assertEqual(self.store.watchlist()['unmapped_count'],0)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

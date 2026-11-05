@@ -133,7 +133,9 @@ class QuoteStore:
         for security,day in pairs[:96]:history[security].add(day)
         return {'securities': sorted(securities),
                 'history_requests':[{'security':s,'dates':sorted(days)} for s,days in sorted(history.items()) if days],
-                'unmapped_count': sum(p['kind'] == 'security' and not p.get('isin') for p in positions),
+                'unmapped_count': sum(p['kind'] == 'security' and not p.get('isin') and
+                    not mapped.get('VALOR:'+p['valor'] if p.get('valor') else '',{}).get('security')
+                    for p in positions),
                 'snapshot_as_of': snapshot['as_of'] if snapshot else None,
                 'mars_as_of': mars['as_of'] if mars else None}
 
