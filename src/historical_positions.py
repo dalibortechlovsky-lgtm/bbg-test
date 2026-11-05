@@ -64,6 +64,7 @@ class HistoricalRequestStore:
     def history_requests(self):
         merged=defaultdict(set)
         for day in self.dates():
+            if day==date.today().isoformat():continue
             for row in reconstruct(self.path,day,False,strict_market=True)['market_requests']:
                 merged[row['security']].update(row['dates'])
         return [{'security':security,'dates':sorted(days)} for security,days in sorted(merged.items())]
@@ -363,11 +364,19 @@ def selection(store,requested=None,strict_market=True):
         return {'requested_as_of':requested,'positions_as_of':requested,'snapshot_as_of':requested,
             'selection':'exact_snapshot','available_dates':dates,'message':'Showing the stored UBS snapshot for '+requested+'.',
             'snapshot':exact,'source_snapshot_as_of':requested,'missing_market_data':[],'issues':[],'review_flags':[]}
-    rebuilt=reconstruct(store.path,requested,strict_market=strict_market);available=rebuilt['snapshot'] is not None
+    current_day=strict_market and requested==date.today().isoformat()
+    if current_day:
+        from .market_performance import live_performance
+        from .quotes import QuoteStore
+        rebuilt=live_performance(store.path,QuoteStore(store.path).view())['reconstruction']
+    else:
+        rebuilt=reconstruct(store.path,requested,strict_market=strict_market)
+    available=rebuilt['snapshot'] is not None
     provisional=available and bool(rebuilt['review_flags'])
     return {'requested_as_of':requested,'positions_as_of':requested,'snapshot_as_of':requested if available else None,
         'selection':'reconstructed_provisional' if provisional else 'reconstructed' if available else 'reconstruction_pending','available_dates':dates,
-        'message':(('Provisional reconstructed positions and P/L for '+requested+'; flagged estimates require review.') if provisional else
+        'message':(('Current-date estimate for '+requested+' uses fresh Bloomberg prices and FX; see flagged accrual estimates.') if current_day and available else
+            ('Provisional reconstructed positions and P/L for '+requested+'; flagged estimates require review.') if provisional else
             'Reconstructed positions and valuation for '+requested+' from UBS activity and Bloomberg history.' if available else
             'Positions were reconstructed for '+requested+'; Bloomberg history or verified terms are still missing.'),
         'snapshot':rebuilt['snapshot'],'source_snapshot_as_of':rebuilt['source_snapshot_as_of'],

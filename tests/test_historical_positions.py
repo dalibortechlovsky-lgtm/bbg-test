@@ -155,6 +155,23 @@ class HistoricalPositionTests(unittest.TestCase):
         self.assertEqual(sum(len(r['dates']) for r in pending),96)
         self.assertTrue(all(r['dates']==['2026-01-02'] for r in pending))
 
+    def test_today_uses_live_quotes_and_is_not_frozen_as_historical_close(self):
+        from datetime import date
+        from src.quotes import QuoteStore
+        from unittest.mock import patch
+        day=date.today().isoformat()
+        requests=HistoricalRequestStore(self.db)
+        requests.request(day)
+        self.assertTrue(all(day not in r['dates'] for r in requests.history_requests()))
+        quotes=[dict(security=s,price=p,currency=c,stale=False,observed_at=day+'T10:00:00Z') for s,p,c in
+                [('/isin/'+ISIN,'90','USD'),('USDCZK Curncy','21','CZK')]]
+        with patch.object(QuoteStore,'view',return_value={'quotes':quotes}):
+            first=selection(SnapshotStore(self.db),day)
+            quotes[0]['price']='95'
+            second=selection(SnapshotStore(self.db),day)
+        self.assertIn('Current-date estimate',second['message'])
+        self.assertNotEqual(first['snapshot']['summary']['market_value'],second['snapshot']['summary']['market_value'])
+
     def test_later_ubs_snapshot_can_verify_contract_scale(self):
         content=(sample().replace('Call synthetic 1:100','Structured certificate')
                  .replace('Equities - Equity investments','Equities - Structured products with equity character'))
