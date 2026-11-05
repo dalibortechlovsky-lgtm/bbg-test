@@ -26,9 +26,13 @@ class HistoryStore:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE name='fx_history'").fetchone():return {}
             columns={r[1] for r in db.execute('PRAGMA table_info(fx_history)')}
             accrued='accrued' if 'accrued' in columns else 'NULL'
-            return {(r[0],r[1]):{'price':Decimal(r[2]),
+            result={(r[0],r[1]):{'price':Decimal(r[2]),
                     'accrued':Decimal(r[3]) if r[3] is not None else None,'source':r[4]}
                     for r in db.execute(f'SELECT security,date,price,{accrued},source FROM fx_history')}
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='bloomberg_market_history'").fetchone():
+                result.update({(r[0],r[1]):{'price':Decimal(r[2]),'accrued':Decimal(r[3]) if r[3] is not None else None,'source':r[4]}
+                    for r in db.execute('SELECT security,date,price,accrued,source FROM bloomberg_market_history')})
+            return result
 
     def sources(self):
         if not self.path.exists():return []
@@ -58,7 +62,7 @@ class HistoryStore:
                 if abs(accrued)>Decimal('100000000'):raise ValueError('Historical accrued interest outside supported range')
             key=sec,day
             if key not in allowed and key not in previous:raise ValueError('Unrequested historical date or security')
-            if key in previous and (previous[key]['price']!=price or
+            if key in previous and previous[key]['source'].startswith('Bloomberg') and (previous[key]['price']!=price or
                     previous[key]['accrued'] is not None and accrued is not None and previous[key]['accrued']!=accrued):
                 raise ValueError('Historical observation conflict; preserve original and review correction')
             value={'price':price,'accrued':accrued}
@@ -70,6 +74,9 @@ class HistoryStore:
             db.execute('CREATE TABLE IF NOT EXISTS fx_history (security TEXT NOT NULL,date TEXT NOT NULL,price TEXT NOT NULL,source TEXT NOT NULL,PRIMARY KEY(security,date))')
             if 'accrued' not in {r[1] for r in db.execute('PRAGMA table_info(fx_history)')}:
                 db.execute('ALTER TABLE fx_history ADD COLUMN accrued TEXT')
+            # Preserve official funding fixings while storing Bloomberg valuation
+            # FX for the same date independently. Neither source overwrites the other.
+            db.execute('CREATE TABLE IF NOT EXISTS bloomberg_market_history (security TEXT NOT NULL,date TEXT NOT NULL,price TEXT NOT NULL,source TEXT NOT NULL,accrued TEXT,PRIMARY KEY(security,date))')
             db.commit()
             db.execute('BEGIN IMMEDIATE')
             if device_id is not None:
@@ -79,14 +86,16 @@ class HistoryStore:
                 if not token or token[1] or timestamp(token[0])<=(now or datetime.now(timezone.utc)):
                     raise PermissionError('Bridge token is no longer valid')
             for (sec,day),value in clean.items():
-                old=db.execute('SELECT price,accrued FROM fx_history WHERE security=? AND date=?',(sec,day)).fetchone()
+                original=db.execute('SELECT source FROM fx_history WHERE security=? AND date=?',(sec,day)).fetchone()
+                table='bloomberg_market_history' if original and not original[0].startswith('Bloomberg') else 'fx_history'
+                old=db.execute(f'SELECT price,accrued FROM {table} WHERE security=? AND date=?',(sec,day)).fetchone()
                 if old and (Decimal(old[0])!=value['price'] or old[1] is not None and value['accrued'] is not None and Decimal(old[1])!=value['accrued']):
                     raise ValueError('Concurrent historical observation conflict')
                 if old and old[1] is None and value['accrued'] is not None:
-                    added+=db.execute('UPDATE fx_history SET accrued=? WHERE security=? AND date=? AND accrued IS NULL',
+                    added+=db.execute(f'UPDATE {table} SET accrued=? WHERE security=? AND date=? AND accrued IS NULL',
                                       (str(value['accrued']),sec,day)).rowcount
                 elif not old:
-                    added+=db.execute('INSERT INTO fx_history (security,date,price,source,accrued) VALUES (?,?,?,?,?)',
+                    added+=db.execute(f'INSERT INTO {table} (security,date,price,source,accrued) VALUES (?,?,?,?,?)',
                                       (sec,day,str(value['price']),'Bloomberg PX_LAST daily; previous close on non-trading days',
                                        None if value['accrued'] is None else str(value['accrued']))).rowcount
         return {'accepted':added,'existing':len(clean)-added}
