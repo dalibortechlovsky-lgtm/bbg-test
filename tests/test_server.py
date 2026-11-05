@@ -18,8 +18,11 @@ class DashboardTests(unittest.TestCase):
             self.assertFalse(status['execution_enabled'])
             self.assertEqual(len(status['asset_classes']), 4)
             self.assertEqual(status['positions'], [])
+            self.assertIsNone(status['indicative'])
             with urlopen(root) as response:
-                self.assertIn(b'Trade blotter', response.read())
+                page=response.read()
+                self.assertIn(b'Trade blotter', page)
+                self.assertIn(b'Estimated YTD performance', page)
             with urlopen(root + '/health') as response:
                 self.assertEqual(json.load(response), {'status': 'ok', 'execution_enabled': False})
         finally:
