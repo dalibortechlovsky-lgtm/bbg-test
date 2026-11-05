@@ -118,7 +118,7 @@ class HistoricalPositionTests(unittest.TestCase):
             self.assertEqual(error.exception.code,403)
             with urlopen(Request(root+'/api/positions/history',data=body,headers={
                     'Content-Type':'application/json','X-Historical-Action':'request'})) as response:
-                self.assertEqual(json.load(response)['selection'],'reconstruction_pending')
+                self.assertEqual(json.load(response)['selection'],'reconstructed_provisional')
             with urlopen(root+'/api/positions/history?as_of=2026-01-02') as response:
                 self.assertEqual(json.load(response)['positions_as_of'],'2026-01-02')
             self.assertEqual(HistoricalRequestStore(self.db).dates(),['2026-01-02'])
@@ -126,3 +126,4 @@ class HistoricalPositionTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
