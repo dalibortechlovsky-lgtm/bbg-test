@@ -59,7 +59,11 @@ class ReportTests(unittest.TestCase):
                 self.assertEqual(state['performance']['totals']['USD']['realized'],'98')
                 self.assertEqual(state['performance']['periods'][0]['amount'],'100')
                 self.assertEqual(len(state['risk']['rows']),1)
-                for path in ['/reports/trader','/api/reports/trader.html','/api/reports/trader.csv','/api/templates/performance.csv','/api/templates/risk.csv']:
+                for path in ['/reports/trader','/api/reports/trader.html','/api/reports/trader.csv']:
+                    with self.assertRaises(HTTPError) as err: urlopen(root+path)
+                    self.assertEqual(err.exception.code,400)
+                    self.assertIn('Bloomberg',err.exception.read().decode())
+                for path in ['/api/templates/performance.csv','/api/templates/risk.csv']:
                     with urlopen(root+path) as r:
                         body=r.read()
                         self.assertEqual(r.status,200)

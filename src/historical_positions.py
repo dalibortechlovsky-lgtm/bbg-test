@@ -260,8 +260,9 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
             'market_value_native':None if native is None else str(native),'missing':absent,
             'review_required':[r for r in reviews if r.startswith(key+':')]})
     for item in [p for p in baseline['positions'] if p['kind']=='cash_account']:
-        account=item['iban'];currency=item['currency'];active.add(currency)
+        account=item['iban'];currency=item['currency']
         balance=D(item['quantity'])+sum((D(r['amount']) for r in records if r['account']==account and baseline['as_of']<r['booking_date']<=requested),ZERO)
+        if balance:active.add(currency)
         positions.append({'key':account,'kind':'cash_account','group':item['group'],'description':item['description'],
             'isin':None,'valor':None,'product':account,'currency':currency,'quantity':str(balance),'price':'1',
             'price_convention':'amount','scale':'1','accrued_native':'0','market_value_native':str(balance),'missing':[],'account':account})
@@ -271,13 +272,14 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
             deposits.setdefault(row['deposit_serial'],{'serial':row['deposit_serial'],'currency':row['currency'],
                 'quantity':'0','group':'Liquidity - Call deposits','description':row['description']})
     for item in deposits.values():
-        serial=item['serial'];currency=item['currency'];active.add(currency);balance=D(item['quantity'])
+        serial=item['serial'];currency=item['currency'];balance=D(item['quantity'])
         for row in records:
             if row['category']!='deposit_principal' or row.get('deposit_serial')!=serial or not baseline['as_of']<row['booking_date']<=requested:continue
             if row['quantity'] is None or row['quantity_currency']!=currency or row['price']!='100' or row['price_convention']!='percent':
                 issues.append('Unverified deposit movement terms: '+row['transaction_no']);continue
             sign=1 if row['base_type'] in {'New Investment Money Market','Increase Money Market'} else -1
             balance+=D(row['quantity'])*sign*(-1 if row['reversal'] else 1)
+        if balance:active.add(currency)
         if balance:positions.append({'key':serial,'kind':'call_deposit','group':item['group'],
             'description':item['description']+' · Serial '+serial,'isin':None,'valor':None,'product':serial,
             'currency':currency,'quantity':str(balance),'price':'1','price_convention':'amount','scale':'1',
