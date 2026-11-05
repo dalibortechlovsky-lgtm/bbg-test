@@ -87,3 +87,38 @@ class IndicativeTests(unittest.TestCase):
 
     def test_no_snapshot(self):
         self.assertIsNone(indicative_ytd(None,None,{}))
+
+    def trade(self, **changes):
+        record = dict(category='security_trade', trade_date='2026-10-15', booking_date='2026-10-19',
+                      currency='USD', price_currency='USD', isin='US0000000001', quantity='2',
+                      amount='-205', base_type='Purchase Spot', reversal=False, accrued=None)
+        record.update(changes)
+        return record
+
+    def test_purchase_net_cash_includes_cost_once(self):
+        r = self.calc([quote('/isin/US0000000001','110')], activity={'ledger':[self.trade()]})
+        self.assertEqual(D(r['market_change_czk']), D('2300'))
+        self.assertEqual(len(r['applied_transactions']), 1)
+
+    def test_sale_removes_marked_quantity_and_adds_net_cash(self):
+        r = self.calc([quote('/isin/US0000000001','110')], activity={'ledger':[self.trade(base_type='Sale Spot', amount='215')]})
+        self.assertEqual(D(r['market_change_czk']), D('1900'))
+
+    def test_deposit_reduction_is_not_profit(self):
+        self.snapshot['positions'].append(dict(kind='call_deposit', currency='USD', description='Deposit',
+            group='Liquidity', quantity_or_balance='500', market_value='500', accrued_interest='0'))
+        transfer = self.trade(category='deposit_principal', base_type='Reduction Money Market',
+                              quantity='200', quantity_currency='USD', amount='200')
+        r = self.calc([quote('/isin/US0000000001','110')], activity={'ledger':[transfer, self.trade()]})
+        self.assertEqual(D(r['market_change_czk']), D('2300'))
+        self.assertEqual(len(r['applied_transactions']), 2)
+        transfer['quantity'] = transfer['amount'] = '300'
+        r = self.calc([quote('/isin/US0000000001','110')], activity={'ledger':[transfer, transfer]})
+        self.assertIsNone(r['estimated_ytd_pnl_czk'])
+
+    def test_unsafe_trade_bases_remain_blocked(self):
+        for changes in ({'trade_date':'2026-10-14'}, {'booking_date':'2026-12-01'},
+                        {'reversal':True}, {'isin':'NEW'}, {'amount':'205'}, {'price_currency':'EUR'}):
+            with self.subTest(changes=changes):
+                r = self.calc([quote('/isin/US0000000001','110')], activity={'ledger':[self.trade(**changes)]})
+                self.assertIsNone(r['estimated_ytd_pnl_czk'])

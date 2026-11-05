@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 import re
 
-from .accounting import closing_positions, identity
+from .accounting import closing_positions, identity, signed_quantity
 from .report import fx_rate
 
 D = Decimal
@@ -31,6 +31,7 @@ def indicative_ytd(snapshot, accounting, bloomberg, terms=None, activity=None, t
     change = D(0)
     price_count = fx_count = security_count = 0
     fallback_count = 0
+    marks = {}
     for item in closing_positions(snapshot):
         p = item['position']; currency = item['currency']
         native = item['value']
@@ -66,6 +67,7 @@ def indicative_ytd(snapshot, accounting, bloomberg, terms=None, activity=None, t
                     and not p['description'].casefold().startswith('future ')):
                 estimated_native += item['quantity'] * scale * (D(quote['price']) - item['price'])
                 used_price = quote['observed_at']; used_times.append(used_price); price_count += 1
+                marks[identity(p)] = (currency, D(quote['price']), scale, new_fx)
                 notes.append('Bloomberg price; unchanged listing, units and quantity assumed')
                 if term.get('review_required'):
                     notes.append('Instrument mapping requires review: ' + term.get('basis', ''))
@@ -84,14 +86,62 @@ def indicative_ytd(snapshot, accounting, bloomberg, terms=None, activity=None, t
         blockers.append('A reconciled snapshot in the current calendar year is required for this YTD estimate.')
     later = [r for r in (activity or {}).get('ledger', [])
              if any(snapshot['as_of'] < (r.get(k) or '') <= today.isoformat() for k in ('trade_date', 'booking_date'))]
-    if later:
-        blockers.append(f'{len(later)} recorded transactions follow the anchor; reconcile updated holdings before estimating YTD.')
+    applied = []
+    reduced_principal = {}
+    # Apply settled ledger changes separately from anchor holdings. Net trade
+    # cash already contains costs: adding it once avoids double-counting fees.
+    for record in later:
+        reason = None
+        delta = D(0)
+        category = record.get('category')
+        trade_day, booked = record.get('trade_date'), record.get('booking_date')
+        currency = record.get('currency')
+        if not trade_day or not booked or not snapshot['as_of'] < trade_day <= booked <= today.isoformat():
+            reason = 'settlement crosses the anchor or is incomplete'
+        elif record.get('reversal'):
+            reason = 'reversal needs reconciliation against its original entry'
+        elif category == 'security_trade':
+            key = record.get('isin') or ('VALOR:' + record['valor'] if record.get('valor') else None)
+            mark = marks.get(key)
+            if (not mark or mark[0] != currency or record.get('price_currency') != currency
+                    or not record.get('base_type', '').startswith(('Purchase', 'Buy', 'Sale', 'Sell'))
+                    or record.get('quantity') is None or record.get('amount') is None
+                    or record.get('accrued') not in (None, '', '0')):
+                reason = 'trade requires a fresh compatible mark, verified units and cash basis'
+            else:
+                quantity = signed_quantity(record)
+                cash = D(record['amount'])
+                if quantity * cash >= 0:
+                    reason = 'trade quantity and cash signs are inconsistent'
+                else:
+                    delta = (quantity * mark[1] * mark[2] + cash) * mark[3]
+        elif category == 'deposit_principal':
+            # A pure principal transfer from an existing same-currency deposit
+            # into cash changes neither NAV nor P/L. Never treat it as income.
+            deposits = [p for p in snapshot['positions'] if p['kind'] == 'call_deposit' and p['currency'] == currency]
+            amount = D(record.get('amount') or '0')
+            quantity = D(record.get('quantity') or '0')
+            cumulative = reduced_principal.get(currency, D(0)) + quantity
+            if (len(deposits) != 1 or not record.get('base_type', '').startswith('Reduction')
+                    or record.get('quantity_currency') != currency
+                    or amount <= 0 or amount != quantity or cumulative > D(deposits[0]['quantity_or_balance'])):
+                reason = 'deposit transfer cannot be matched to anchor principal'
+            else:
+                reduced_principal[currency] = cumulative
+        else:
+            reason = 'transaction category requires reconciliation'
+        if reason:
+            blockers.append('Post-anchor recorded transactions: ' + str(record.get('transaction_no') or record.get('id') or category) + ': ' + reason + '.')
+        else:
+            change += delta
+            applied.append({'reference': record.get('transaction_no') or record.get('id'),
+                            'category': category, 'change_czk': str(delta)})
     if not used_times:
         blockers.append('No fresh Bloomberg prices or FX are available.')
     if accounting.get('nav_czk') is None or accounting.get('ytd_pnl_czk') is None:
         blockers.append('The anchor has no calculable NAV and YTD P/L; opening balances and funding records are required.')
     warnings.extend([
-        'Assumes no trades, external cash flows or corporate actions after ' + snapshot['as_of'] + '.',
+        'Includes supported recorded transactions after ' + snapshot['as_of'] + '; assumes no unrecorded trades, external cash flows or corporate actions.',
         'Accrued interest is carried from the anchor; later income, fees, tax and financing are not estimated.',
         'Bloomberg receipt times are not exchange trade timestamps. Missing prices and FX retain their anchor values.',
         'This estimate covers the UBS portfolio only. Other banks are excluded.',
@@ -99,7 +149,8 @@ def indicative_ytd(snapshot, accounting, bloomberg, terms=None, activity=None, t
     if not accounting.get('portfolio_pnl_verified'):
         warnings.append('The starting accounting result is provisional; its reconciliation issues also apply here.')
     available = not blockers
-    return {'status': 'Indicative · unchanged holdings assumption' if available else 'Estimate unavailable',
+    return {'status': 'Indicative · known holdings and recorded activity' if available else 'Estimate unavailable',
+            'applied_transactions': applied,
             'anchor_as_of': snapshot['as_of'], 'as_of': today.isoformat(),
             'quote_time_from': min(used_times) if used_times else None,
             'quote_time_to': max(used_times) if used_times else None,
@@ -110,4 +161,4 @@ def indicative_ytd(snapshot, accounting, bloomberg, terms=None, activity=None, t
             'fresh_price_count': price_count, 'security_count': security_count,
             'fresh_fx_position_count': fx_count, 'fallback_price_count': fallback_count,
             'positions': rows, 'warnings': warnings, 'blockers': blockers,
-            'basis': 'Anchor YTD P/L + price and FX change on anchor holdings, including FX on carried accrued interest. Realized P/L is not added again.'}
+            'basis': 'Anchor YTD P/L + price and FX change on anchor holdings + marked value and net cash of supported recorded transactions. Realized P/L is not added again.'}
