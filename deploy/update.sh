@@ -157,8 +157,14 @@ if confirmation:
 # Verify report downloads without importing any synthetic trading data.
 if state.get('snapshot'):
     for path,expected in [('/api/reports/trader.html',b'Trading Overview'),('/api/reports/trader.csv',b'section,')]:
-        with urllib.request.urlopen(urllib.request.Request(base+path,headers={'Authorization':auth}),timeout=15) as r:
-            assert r.status==200 and expected in r.read()
+        try:
+            with urllib.request.urlopen(urllib.request.Request(base+path,headers={'Authorization':auth}),timeout=15) as r:
+                assert r.status==200 and expected in r.read()
+        except urllib.error.HTTPError as exc:
+            # Bloomberg-only reports must not silently fall back to bank marks.
+            assert exc.code==400 and b'Bloomberg' in exc.read()
+            assert state.get('indicative',{}).get('estimated_ytd_pnl_czk') is None
+            assert state.get('indicative',{}).get('blockers')
 if state.get('mars'):
     for path,expected in [('/api/reports/mars.html',b'MARS base data'),('/api/reports/mars.csv',b'valuation_date')]:
         with urllib.request.urlopen(urllib.request.Request(base+path,headers={'Authorization':auth}),timeout=15) as r:
