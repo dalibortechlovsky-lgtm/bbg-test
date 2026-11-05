@@ -64,7 +64,8 @@ def request_history(requests):
     option=re.compile(r'[A-Z0-9]{1,8} [A-Z]{2} \d{2}/\d{2}/\d{2} [CP]\d+(?:\.\d+)? (?:Equity|Index)')
     for security,days in wanted.items():
         supported=(re.fullmatch('[A-Z]{3}CZK Curncy',security) or
-                   re.fullmatch('/isin/[A-Z0-9]{12}',security) or option.fullmatch(security))
+                   re.fullmatch('/isin/[A-Z0-9]{12}',security) or option.fullmatch(security) or
+                   re.fullmatch(r'[A-Z0-9][A-Z0-9./-]{0,20} [A-Z]{2} Equity',security))
         if not supported or not 1<=len(days)<=500:raise ValueError('Invalid historical security or dates')
         for day in days:
             if date.fromisoformat(day).isoformat()!=day:raise ValueError('Invalid history date')

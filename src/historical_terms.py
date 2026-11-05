@@ -9,13 +9,15 @@ import sqlite3
 
 KEY = re.compile(r'(?:[A-Z0-9]{12}|VALOR:\d{1,12})')
 OPTION = re.compile(r'[A-Z0-9]{1,8} [A-Z]{2} \d{2}/\d{2}/\d{2} [CP]\d+(?:\.\d+)? (?:Equity|Index)')
+EQUITY = re.compile(r'[A-Z0-9][A-Z0-9./-]{0,20} [A-Z]{2} Equity')
 
 
 def supported_market_security(value):
     return isinstance(value, str) and bool(
         re.fullmatch(r'[A-Z]{3}CZK Curncy', value)
         or re.fullmatch(r'/isin/[A-Z0-9]{12}', value)
-        or OPTION.fullmatch(value))
+        or OPTION.fullmatch(value)
+        or EQUITY.fullmatch(value))
 
 
 class HistoricalTermsStore:
@@ -29,6 +31,27 @@ class HistoricalTermsStore:
                 return {}
             return {key: json.loads(payload) for key, payload in db.execute(
                 'SELECT key,payload FROM historical_instrument_terms')}
+
+    def correct_identifier(self,key,security,expected_security,basis):
+        """Audit a verified identifier correction without changing contract units."""
+        if not isinstance(key,str) or not KEY.fullmatch(key) or not supported_market_security(security):
+            raise ValueError('Invalid instrument identifier correction')
+        if not isinstance(basis,str) or not 1<=len(basis.strip())<=512 or any(ord(c)<32 for c in basis):
+            raise ValueError('Correction requires source evidence')
+        with sqlite3.connect(self.path) as db:
+            db.execute('CREATE TABLE IF NOT EXISTS historical_identifier_corrections (key TEXT NOT NULL,old_payload TEXT NOT NULL,new_payload TEXT NOT NULL,basis TEXT NOT NULL,recorded_at TEXT NOT NULL)')
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT payload FROM historical_instrument_terms WHERE key=?',(key,)).fetchone()
+            if not row:raise ValueError('Existing instrument mapping required')
+            original=json.loads(row[0])
+            if original['security']==security:return {'corrected':0,'existing':1}
+            if original['security']!=expected_security:raise ValueError('Mapping changed; review before correcting')
+            updated=original|{'security':security,'basis':basis.strip()}
+            payload=json.dumps(updated,sort_keys=True,separators=(',',':'))
+            db.execute('INSERT INTO historical_identifier_corrections VALUES (?,?,?,?,?)',
+                       (key,row[0],payload,basis.strip(),datetime.now(timezone.utc).isoformat()))
+            db.execute('UPDATE historical_instrument_terms SET payload=? WHERE key=?',(payload,key))
+        return {'corrected':1,'existing':0}
 
     def record(self, rows):
         if not isinstance(rows, list) or not rows: raise ValueError('Supply historical instrument terms')
