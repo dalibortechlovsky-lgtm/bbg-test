@@ -39,9 +39,21 @@ class HistoricalRequestStore:
         with sqlite3.connect(self.path) as db:
             db.execute('CREATE TABLE IF NOT EXISTS historical_position_requests '
                        '(as_of TEXT PRIMARY KEY,created_at TEXT NOT NULL,source TEXT NOT NULL)')
-            db.execute('INSERT OR IGNORE INTO historical_position_requests VALUES (?,?,?)',
+            if 'last_requested_at' not in {r[1] for r in db.execute('PRAGMA table_info(historical_position_requests)')}:
+                db.execute('ALTER TABLE historical_position_requests ADD COLUMN last_requested_at TEXT')
+            db.execute('INSERT OR IGNORE INTO historical_position_requests (as_of,created_at,source) VALUES (?,?,?)',
                        (as_of,datetime.now(timezone.utc).isoformat(),'Owner requested historical positions and P/L'))
+            db.execute('UPDATE historical_position_requests SET last_requested_at=? WHERE as_of=?',
+                       (datetime.now(timezone.utc).isoformat(),as_of))
         return view_for_path(self.path,as_of)
+
+    def priority_dates(self):
+        if not self.path.exists():return []
+        with sqlite3.connect(self.path) as db:
+            columns={r[1] for r in db.execute('PRAGMA table_info(historical_position_requests)')}
+            if not columns:return []
+            order='COALESCE(last_requested_at,created_at)' if 'last_requested_at' in columns else 'created_at'
+            return [r[0] for r in db.execute('SELECT as_of FROM historical_position_requests ORDER BY '+order+' DESC,as_of DESC')]
 
     def dates(self):
         if not self.path.exists():return []

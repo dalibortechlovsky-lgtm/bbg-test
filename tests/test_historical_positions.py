@@ -125,6 +125,36 @@ class HistoricalPositionTests(unittest.TestCase):
         self.assertEqual({r['security'] for r in store.history_requests()},
                          {'/isin/'+ISIN,'USDCZK Curncy'})
 
+    def test_multiple_dates_automatically_queue_price_and_fx_without_bank_snapshot(self):
+        from src.quotes import QuoteStore
+        dates=['2026-01-02','2026-03-31','2026-06-30','2026-09-30','2026-10-31']
+        requests=HistoricalRequestStore(self.db)
+        for day in dates:requests.request(day)
+        pending=QuoteStore(self.db).watchlist()['history_requests']
+        self.assertEqual({r['security'] for r in pending},{'/isin/'+ISIN,'USDCZK Curncy'})
+        self.assertTrue(all(set(r['dates'])==set(dates) for r in pending))
+        # A partial response leaves FX pending; it does not borrow bank FX.
+        HistoryStore(self.db).ingest({'quotes':[dict(security='/isin/'+ISIN,date=dates[-1],price='90')]},pending)
+        self.assertIsNone(view(SnapshotStore(self.db),dates[-1])['accounting'])
+        remaining=QuoteStore(self.db).watchlist()['history_requests']
+        self.assertNotIn(dates[-1],next(r['dates'] for r in remaining if r['security']=='/isin/'+ISIN))
+        self.assertIn(dates[-1],next(r['dates'] for r in remaining if r['security']=='USDCZK Curncy'))
+        HistoryStore(self.db).ingest({'quotes':[dict(security='USDCZK Curncy',date=dates[-1],price='21')]},remaining)
+        self.assertNotEqual(view(SnapshotStore(self.db),dates[-1])['selection'],'reconstruction_pending')
+        self.assertTrue(all(dates[-1] not in r['dates'] for r in QuoteStore(self.db).watchlist()['history_requests']))
+
+    def test_bounded_queue_prioritizes_reselected_date(self):
+        from src.quotes import QuoteStore
+        from unittest.mock import patch
+        requests=HistoricalRequestStore(self.db)
+        requests.request('2026-01-02');requests.request('2026-10-31');requests.request('2026-01-02')
+        self.assertEqual(requests.priority_dates()[0],'2026-01-02')
+        lots=[dict(security='/isin/'+str(i).zfill(12),dates=['2026-01-02','2026-10-31']) for i in range(100)]
+        with patch.object(HistoricalRequestStore,'history_requests',return_value=lots):
+            pending=QuoteStore(self.db).watchlist()['history_requests']
+        self.assertEqual(sum(len(r['dates']) for r in pending),96)
+        self.assertTrue(all(r['dates']==['2026-01-02'] for r in pending))
+
     def test_later_ubs_snapshot_can_verify_contract_scale(self):
         content=(sample().replace('Call synthetic 1:100','Structured certificate')
                  .replace('Equities - Equity investments','Equities - Structured products with equity character'))

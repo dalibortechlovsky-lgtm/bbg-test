@@ -91,7 +91,9 @@ class QuoteStore:
         snapshot = SnapshotStore(self.path).latest()
         mars = MarsStore(self.path).latest()
         mars_tickers = {p['ticker'] for p in mars['instruments']} if mars else set()
-        if not snapshot and not mars:
+        from .baseline import BaselineStore
+        baseline=BaselineStore(self.path).latest()
+        if not snapshot and not mars and not baseline:
             return {'securities': ['IBM US Equity'], 'unmapped_count': 0, 'snapshot_as_of': None}
         positions = snapshot['positions'] if snapshot else []
         ids = sorted({p['isin'] for p in positions if p.get('isin')})
@@ -108,7 +110,7 @@ class QuoteStore:
         requested=HistoricalRequestStore(self.path).history_requests()
         from .historical_positions import reconstruct
         from datetime import date
-        current_requests=reconstruct(self.path,date.today().isoformat(),False,strict_market=True)['market_requests'] if snapshot else []
+        current_requests=reconstruct(self.path,date.today().isoformat(),False,strict_market=True)['market_requests'] if snapshot or baseline else []
         # Exact dated requests also supply the current identifiers, including
         # options and positions acquired after the last bank snapshot.
         securities.update(r['security'] for r in current_requests)
@@ -122,6 +124,13 @@ class QuoteStore:
         stored=HistoryStore(self.path).observations()
         history={s:{day for day in days if not stored.get((s,day),{}).get('source','').startswith('Bloomberg')}
                  for s,days in history.items()}
+        # Bound each worker poll and put the user's most recently selected date
+        # first. Cached inputs disappear; missing inputs stay queued for retry.
+        priorities={day:i for i,day in enumerate(HistoricalRequestStore(self.path).priority_dates())}
+        pairs=sorted(((s,day) for s,days in history.items() for day in days),
+                     key=lambda pair:(priorities.get(pair[1],len(priorities)),pair[1],pair[0]))
+        history=defaultdict(set)
+        for security,day in pairs[:96]:history[security].add(day)
         return {'securities': sorted(securities),
                 'history_requests':[{'security':s,'dates':sorted(days)} for s,days in sorted(history.items()) if days],
                 'unmapped_count': sum(p['kind'] == 'security' and not p.get('isin') for p in positions),
