@@ -123,6 +123,7 @@ def calculate_trades(snapshot, baseline, activity, accounting, decisions=None, l
             elif choice == 'asset_settlement': totals['transferred_czk'] += cash
             elif choice is None: issues.append('Cash classification missing: '+r['transaction_no'])
     # emit appends to rows after combining above.
+    totals['pooled_margin_czk'] += D((accounting or {}).get('pending_margin_czk') or '0')
     bridge = (accounting or {}).get('nav_bridge') or {}
     opening_at_close = ZERO
     for p in baseline['positions']:

@@ -87,6 +87,34 @@ class HistoricalPositionTests(unittest.TestCase):
         self.assertGreater(value,0)
         self.assertLess(value,Decimal('2.25'))
 
+    def test_audited_margin_option_and_unbooked_margin_are_counted_once(self):
+        from src.margin_treatment import MarginTreatmentStore
+        key='GB0000000001'
+        option=posting('-2',number='OPTION',kind='Buy to open',
+            Description1='Call Future; '+key,Description3='Number/Amt. 25; Transaction price: 4.41 USD',
+            **{'Trade date':'2026-01-02','Booking date':'2026-01-02'})
+        margin=posting('32',number='MARGIN',kind='variation margin futures',
+            Description1='variation margin futures',Description3='',
+            **{'Trade date':'2026-01-03','Booking date':'2026-01-05'})
+        ActivityStore(self.db).import_content(account_csv([option,margin],opening='100'))
+        treatment=MarginTreatmentStore(self.db)
+        treatment.record(key,'Synthetic exchange-confirmed futures-style margin option')
+        with self.assertRaises(ValueError):treatment.record(key,'Different source')
+        self.assertNotIn('futures_style_margin',ActivityStore(self.db).state()[0][0])
+        self.assertTrue(next(r for r in ActivityStore(self.db).view()['ledger'] if r['isin']==key)['futures_style_margin'])
+        requests=[{'security':s,'dates':['2026-01-03','2026-01-05']} for s in ['/isin/'+ISIN,'USDCZK Curncy']]
+        HistoryStore(self.db).ingest({'quotes':[dict(security=r['security'],date=d,price='70' if r['security'].startswith('/isin/') else '20') for r in requests for d in r['dates']]},requests)
+        first=view(SnapshotStore(self.db),'2026-01-03')['accounting']
+        last=view(SnapshotStore(self.db),'2026-01-05')['accounting']
+        self.assertEqual(Decimal(first['pending_margin_czk']),640)
+        self.assertNotIn('pending_margin_czk',last)
+        self.assertEqual(first['nav_czk'],last['nav_czk'])
+        self.assertEqual(first['ytd_pnl_czk'],last['ytd_pnl_czk'])
+        for a in (first,last):
+            self.assertEqual(Decimal(a['trade_calculations']['reconciliation_difference_czk']),0)
+            self.assertEqual(Decimal(a['trade_calculations']['components']['pooled_margin_czk']),640)
+            self.assertIsNotNone(a['trade_calculations']['ytd_pnl_czk'])
+
     def test_activity_reconstructs_quantity_cash_and_bloomberg_valuation(self):
         buy=posting('-71',number='BUY',Description3='Number/Amt. 1; Transaction price: 70 USD')
         ActivityStore(self.db).import_batch([account_csv([buy],opening='100',start='2026-01-01',until='2026-01-05')])

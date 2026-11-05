@@ -316,6 +316,11 @@ class ActivityStore:
     def _view(self, snapshot=None):
         records, exports = self.state()
         if not exports: return None
+        from .margin_treatment import MarginTreatmentStore
+        treatments=MarginTreatmentStore(self.path).all()
+        records=[r | {'futures_style_margin':True} if
+                 (r.get('isin') or ('VALOR:'+r['valor'] if r.get('valor') else None)) in treatments else r
+                 for r in records]
         known_accounts = {e['account'] for e in exports}
         cash_positions = [p for p in (snapshot or {}).get('positions', []) if p['kind'] == 'cash_account']
         known_accounts.update(iban(p.get('raw', {}).get('IBAN', '')) for p in cash_positions)

@@ -62,7 +62,7 @@ def trade_cash(row):
     return cash
 
 
-def is_future(row): return row['description'].casefold().startswith('future ')
+def is_future(row): return row.get('futures_style_margin') is True or row['description'].casefold().startswith('future ')
 
 
 def signed_quantity(row):

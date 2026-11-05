@@ -234,6 +234,8 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
         observations={(s,requested):{'price':D(q['price']),'accrued':None,'currency':q.get('currency')}
                       for s,q in live_quotes.items()}
     market_requests=defaultdict(set);missing=[];reviews=[];positions=[];fx={};active=set()
+    if any(is_future(r) and baseline['as_of']<r['trade_date']<=requested for r in records):
+        reviews.append('Futures-style contracts: recorded variation margin is counted once, including dated unbooked margin receivables/payables. Full contract premium is not added to NAV. Unrecorded margin movements are excluded.')
     for key,quantity in sorted(quantities.items()):
         if not quantity:continue
         source=metadata.get(key,{});term=terms.get(key,{});currency=currencies.get(key) or source.get('currency');active.add(currency)
@@ -388,6 +390,7 @@ def selection(store,requested=None,strict_market=True):
 def historical_accounting(path,snapshot,review_flags):
     accounting=accounting_view(path,snapshot)
     if not accounting:return accounting
+    activity=ActivityStore(path).view(snapshot)
     pending=accounting.get('pending_settlements',[])
     bridge=accounting.get('nav_bridge',{})
     if snapshot.get('source')=='reconstructed_ubs_activity_bloomberg_history' and pending and all(
@@ -406,6 +409,19 @@ def historical_accounting(path,snapshot,review_flags):
             accounting['settlement_adjustment_czk']=str(adjustment)
             bridge.update(closing_nav_czk=str(nav),pnl_czk=str(pnl),attribution_difference_czk=None)
             review_flags=list(review_flags)+['Estimated settlement receivables/payables included at selected-date FX; cash remains on booking-date basis.']
+    if snapshot.get('source')=='reconstructed_ubs_activity_bloomberg_history':
+        margin=ZERO
+        for row in (activity or {}).get('ledger',[]):
+            if row['category']=='futures_margin' and row['trade_date']<=snapshot['as_of']<row['booking_date']:
+                rate=fx_rate(snapshot,row['currency'],'CZK')
+                if rate is None: continue  # strict reconstruction already blocks missing currency FX
+                margin+=D(row['amount'])*rate
+        if margin and accounting.get('ytd_pnl_czk') is not None:
+            accounting['pending_margin_czk']=str(margin)
+            accounting['nav_czk']=str(D(accounting['nav_czk'])+margin)
+            accounting['ytd_pnl_czk']=str(D(accounting['ytd_pnl_czk'])+margin)
+            bridge.update(closing_nav_czk=accounting['nav_czk'],pnl_czk=accounting['ytd_pnl_czk'])
+            review_flags=list(review_flags)+['Dated variation margin awaiting cash booking is included as a receivable/payable; it is not counted again after booking.']
     if review_flags:
         accounting['status']='Provisional historical valuation · review required'
         accounting['portfolio_pnl_verified']=False
@@ -414,7 +430,7 @@ def historical_accounting(path,snapshot,review_flags):
     from .trade_calculations import calculate_trades
     from .cash_review import CashReviewStore
     accounting['trade_calculations']=calculate_trades(snapshot,BaselineStore(path).latest(snapshot['as_of']),
-        ActivityStore(path).view(snapshot),accounting,CashReviewStore(path).all(),LifecycleStore(path).all())
+        activity,accounting,CashReviewStore(path).all(),LifecycleStore(path).all())
     return accounting
 
 
