@@ -155,7 +155,7 @@ def indicative_ytd(snapshot, accounting, bloomberg, terms=None, activity=None, t
         'Includes supported recorded transactions after ' + snapshot['as_of'] + '; assumes no unrecorded trades, external cash flows or corporate actions.',
         'Accrued interest is carried from the anchor. Supported posted income and fees are included; unrecorded income, tax and financing are not estimated.',
         'Bloomberg receipt times are not exchange trade timestamps. Missing prices and FX retain their anchor values.',
-        'This estimate covers the UBS portfolio only. Other banks are excluded.',
+        'Reprices UBS holdings on the accounting anchor, including confirmed outside-trade proceeds already received. Other-bank open positions are excluded.',
     ])
     if not accounting.get('portfolio_pnl_verified'):
         warnings.append('The starting accounting result is provisional; its reconciliation issues also apply here.')

@@ -51,6 +51,18 @@ class HistoricalPositionTests(unittest.TestCase):
         deposit=next(p for p in result['positions'] if p['kind']=='call_deposit')
         self.assertEqual(deposit['quantity'],'50')
 
+    def test_unsettled_purchase_estimate_includes_payable_once(self):
+        buy=posting('-71',number='BUY',Description3='Number/Amt. 1; Transaction price: 70 USD')
+        ActivityStore(self.db).import_content(account_csv([buy],opening='100'))
+        result=view(SnapshotStore(self.db),'2026-01-03')
+        a=result['accounting']
+        self.assertIsNotNone(a['ytd_pnl_czk'])
+        self.assertEqual(Decimal(a['settlement_adjustment_czk']),Decimal('-1420'))
+        self.assertFalse(a['portfolio_pnl_verified'])
+        self.assertTrue(any('receivables/payables included' in issue for issue in a['issues']))
+        settled=view(SnapshotStore(self.db),'2026-01-05')['accounting']
+        self.assertNotIn('settlement_adjustment_czk',settled)
+
     def test_distant_maturity_coupon_schedule(self):
         from src.historical_positions import _coupon_accrued
         value=_coupon_accrued({'description':'Treasury 4.5% 15.11.2053'},'2026-09-30')
@@ -126,4 +138,3 @@ class HistoricalPositionTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
-

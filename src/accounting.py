@@ -317,7 +317,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
                 'reference':r['transaction_no']})
         elif r['category']=='unclassified':
             issues.append('Unclassified cash posting: '+r['transaction_no']);uncertain.add(r['currency'])
-    pending=[{'key':source_key(r),'currency':r['currency'],'amount':r['amount'],
+    pending=[{'key':source_key(r),'category':r['category'],'currency':r['currency'],'amount':r['amount'],
               'trade_date':r['trade_date'],'booking_date':r['booking_date'],'description':r['description']}
              for r in records if r['category'] in {'security_trade','security_redemption','fx_conversion','deposit_principal'}
              and r['trade_date']<=cutoff<r['booking_date'] and r['id'] not in retired]

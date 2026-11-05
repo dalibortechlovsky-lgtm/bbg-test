@@ -343,17 +343,42 @@ def selection(store,requested=None):
         'reconstructed_positions':rebuilt['positions'],'market_requests':rebuilt['market_requests']}
 
 
+def historical_accounting(path,snapshot,review_flags):
+    accounting=accounting_view(path,snapshot)
+    if not accounting:return accounting
+    pending=accounting.get('pending_settlements',[])
+    bridge=accounting.get('nav_bridge',{})
+    if snapshot.get('source')=='reconstructed_ubs_activity_bloomberg_history' and pending and all(
+            bridge.get(k) is not None for k in ('opening_nav_czk','net_external_flows_czk')):
+        adjustment=ZERO;available=True
+        for row in pending:
+            if row.get('category') in {'fx_conversion','deposit_principal'}:continue
+            rate=fx_rate(snapshot,row['currency'],'CZK')
+            if row.get('category') not in {'security_trade','security_redemption'} or rate is None:
+                available=False;break
+            adjustment+=D(row['amount'])*rate
+        if available:
+            nav=D(snapshot['summary']['market_value'])+D(snapshot['summary']['accrued_interest'])+adjustment
+            pnl=nav-D(bridge['opening_nav_czk'])-D(bridge['net_external_flows_czk'])
+            accounting['nav_czk']=str(nav);accounting['ytd_pnl_czk']=str(pnl)
+            accounting['settlement_adjustment_czk']=str(adjustment)
+            bridge.update(closing_nav_czk=str(nav),pnl_czk=str(pnl),attribution_difference_czk=None)
+            review_flags=list(review_flags)+['Estimated settlement receivables/payables included at selected-date FX; cash remains on booking-date basis.']
+    if review_flags:
+        accounting['status']='Provisional historical valuation · review required'
+        accounting['portfolio_pnl_verified']=False
+        accounting['provisional']=True
+        accounting['issues']=list(accounting.get('issues',[]))+list(review_flags)
+    return accounting
+
+
 def view(store,requested=None):
     result=selection(store,requested);snapshot=result.pop('snapshot')
     if not snapshot:return result|{'exported_at':None,'valuation_currency':'CZK','summary':None,
         'positions':result.pop('reconstructed_positions',[]),'accounting':None,
         'valuation_basis':'Quantities and cash are reconstructed; total P/L waits for all required historical market inputs.'}
     positions=[{k:v for k,v in row.items() if k!='raw'} for row in snapshot['positions']]
-    accounting=accounting_view(store.path,snapshot)
-    if result.get('review_flags') and accounting:
-        accounting=dict(accounting);accounting['status']='Provisional historical valuation · review required'
-        accounting['portfolio_pnl_verified']=False
-        accounting['provisional']=True;accounting['issues']=list(accounting.get('issues',[]))+result['review_flags']
+    accounting=historical_accounting(store.path,snapshot,result.get('review_flags',[]))
     return result|{'exported_at':snapshot['exported_at'],'valuation_currency':snapshot['valuation_currency'],
         'summary':snapshot['summary'],'positions':positions,'accounting':accounting,
         'valuation_basis':('Stored UBS quantities, prices, accrued interest and FX.' if result['selection']=='exact_snapshot' else
