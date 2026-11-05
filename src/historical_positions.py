@@ -14,6 +14,7 @@ from .history import HistoryStore
 from .historical_terms import HistoricalTermsStore
 from .lifecycle import LifecycleStore
 from .ubs_activity import ActivityStore
+from .report import fx_rate
 
 D=Decimal
 ZERO=D(0)
@@ -77,7 +78,9 @@ def _metadata(path,baseline):
     for p in (latest or {}).get('positions',[]):
         key=_key(p)
         if key:
-            result[key]=p|{'_snapshot_as_of':latest['as_of'],'_accrued_native':p.get('accrued_interest')}|(
+            rate=fx_rate(latest,p['currency'],latest['valuation_currency'])
+            result[key]=p|{'_snapshot_as_of':latest['as_of'],'_accrued_native':
+                str(D(p.get('accrued_interest') or '0')/rate) if rate else None}|(
                 {'verified_unit_scale':str(verified[key])} if verified.get(key) is not None else {})
     for p in baseline['positions']:
         if p['kind']=='security' and p['key'] not in result:
@@ -131,7 +134,7 @@ def _activity_scale(key,records):
         quantity=abs(D(row['quantity']));price=abs(D(row['price']))
         if not quantity or not price:continue
         ratio=abs(D(row['amount']))/quantity/price;integer=ratio.to_integral_value()
-        if integer>1 and abs(ratio-integer)/integer<=D('0.02'):candidates.append(integer)
+        if integer>=1 and abs(ratio-integer)/integer<=D('0.02'):candidates.append(integer)
     if candidates and len(set(candidates))==1:return candidates[0]
     return None
 
@@ -147,7 +150,8 @@ def _coupon_accrued(source,requested):
     if not rate or not maturity:return None
     anchor=date(int(maturity[3]),int(maturity[2]),int(maturity[1]));cutoff=_date(requested)
     candidates=[]
-    for offset in range(-80,20):candidates.append(_shift_month(anchor,offset*6))
+    center=((cutoff.year-anchor.year)*12+cutoff.month-anchor.month)//6
+    for offset in range(center-2,center+3):candidates.append(_shift_month(anchor,offset*6))
     previous=max(d for d in candidates if d<=cutoff);following=min(d for d in candidates if d>cutoff)
     return D(rate[1])/D(2)*D((cutoff-previous).days)/D((following-previous).days)
 
@@ -196,10 +200,8 @@ def reconstruct(path,requested,require_market_data=True):
         currencies.setdefault(key,row['price_currency'] or row['currency'])
         metadata.setdefault(key,{'isin':row.get('isin'),'valor':row.get('valor'),'product':key,
             'kind':'security','group':'Reconstructed securities','description':row['description'],'currency':currencies[key]})
-    prior_quantities={_key(p):D(p['quantity_or_balance']) for p in (prior_snapshot or {}).get('positions',[])
-                      if p['kind']=='security' and _key(p)}
     settled={r['key']:r for r in sorted(LifecycleStore(path).all(),key=lambda r:r['settled_by'])
-             if r['settled_by']<=requested or prior_snapshot and r['key'] not in prior_quantities}
+             if r['settled_by']<=requested}
     for key,confirmation in settled.items():
         later=[r for r in trades if source_key(r)==key and r['trade_date']>confirmation['settled_by']]
         if later:issues.append(key+': executions after settlement confirmation require review')
@@ -217,13 +219,14 @@ def reconstruct(path,requested,require_market_data=True):
         if scale is None:
             scale=_activity_scale(key,records)
             if scale is not None:reviews.append(key+f': Review required — contract multiplier {scale} inferred from UBS net settlements.')
-        bond=source.get('group','').startswith('Bonds');absent=[]
-        if not security:absent.append('Bloomberg identifier mapping')
+        bond=scale==D('0.01');absent=[]
         price=observation['price'] if observation else None
         if price is None:
             price,reason=_price_proxy(key,requested,opening,source,records)
             if price is None:absent.append('Bloomberg PX_LAST')
             else:reviews.append(key+': Review required — '+reason)
+        if not security:
+            reviews.append(key+': Bloomberg identifier mapping missing; source-price estimate only.')
         if scale is None:absent.append('verified contract multiplier')
         accrued=observation['accrued'] if observation else None
         if bond and accrued is None:
@@ -248,7 +251,12 @@ def reconstruct(path,requested,require_market_data=True):
         positions.append({'key':account,'kind':'cash_account','group':item['group'],'description':item['description'],
             'isin':None,'valor':None,'product':account,'currency':currency,'quantity':str(balance),'price':'1',
             'price_convention':'amount','scale':'1','accrued_native':'0','market_value_native':str(balance),'missing':[],'account':account})
-    for item in [p for p in baseline['positions'] if p['kind']=='call_deposit']:
+    deposits={p['serial']:p for p in baseline['positions'] if p['kind']=='call_deposit'}
+    for row in records:
+        if row['category']=='deposit_principal' and row.get('deposit_serial') and baseline['as_of']<row['booking_date']<=requested:
+            deposits.setdefault(row['deposit_serial'],{'serial':row['deposit_serial'],'currency':row['currency'],
+                'quantity':'0','group':'Liquidity - Call deposits','description':row['description']})
+    for item in deposits.values():
         serial=item['serial'];currency=item['currency'];active.add(currency);balance=D(item['quantity'])
         for row in records:
             if row['category']!='deposit_principal' or row.get('deposit_serial')!=serial or not baseline['as_of']<row['booking_date']<=requested:continue
@@ -260,11 +268,23 @@ def reconstruct(path,requested,require_market_data=True):
             'description':item['description']+' · Serial '+serial,'isin':None,'valor':None,'product':serial,
             'currency':currency,'quantity':str(balance),'price':'1','price_convention':'amount','scale':'1',
             'accrued_native':'0','market_value_native':str(balance),'missing':[]})
+    reviews.append('Cash/deposit accrued interest is not estimated between bank snapshots; posted income is included in cash.')
     for currency in sorted(active):
         if currency=='CZK':fx['CZK/CZK']='1';continue
+        if not any(p['currency']==currency and D(p['quantity']) for p in positions):continue
         security=currency+'CZK Curncy';market_requests[security].add(requested);observation=observations.get((security,requested))
         if observation:fx[currency+'/CZK']=str(observation['price'])
-        else:missing.append(security+': Bloomberg PX_LAST')
+        else:
+            points=[(day,obs['price']) for (sec,day),obs in observations.items() if sec==security]
+            for source in (baseline,prior_snapshot,latest):
+                if source:
+                    rate=fx_rate(source,currency,'CZK')
+                    if rate is not None:points.append((source['as_of'],rate))
+            rate,reason=_linear_value(points,requested)
+            if rate is None:missing.append(security+': Bloomberg PX_LAST')
+            else:
+                fx[currency+'/CZK']=str(rate)
+                reviews.append(security+': Review required — '+reason)
     complete=not missing and not issues;snapshot=None
     if complete or not require_market_data:
         synthetic=[];market=ZERO;accrued_total=ZERO
@@ -272,8 +292,8 @@ def reconstruct(path,requested,require_market_data=True):
             rate=D(1) if p['currency']=='CZK' else D(fx[p['currency']+'/CZK']) if p['currency']+'/CZK' in fx else None
             native=D(p['market_value_native']) if p['market_value_native'] is not None else None
             native_accrued=D(p['accrued_native']) if p['accrued_native'] is not None else None
-            value=native*rate if native is not None and rate is not None else None
-            interest=native_accrued*rate if native_accrued is not None and rate is not None else None
+            value=ZERO if native==ZERO else native*rate if native is not None and rate is not None else None
+            interest=ZERO if native_accrued==ZERO else native_accrued*rate if native_accrued is not None and rate is not None else None
             synthetic.append({'id':hashlib.sha256((p['key']+'|'+p['currency']).encode()).hexdigest(),
                 'portfolio':(latest or {}).get('portfolio',baseline['portfolio']),'product':p['product'],'kind':p['kind'],
                 'group':p['group'],'description':p['description'],'isin':p['isin'],'valor':p['valor'],'currency':p['currency'],
@@ -281,7 +301,7 @@ def reconstruct(path,requested,require_market_data=True):
                 'market_value':None if value is None else str(value),'accrued_interest':None if interest is None else str(interest),
                 'cost_value':None,'cost_price':None,'market_price':None if p['kind']=='cash_account' else
                     ({'value':p['price'],'convention':p['price_convention']} if p['price'] is not None else None),
-                'price_date':requested,'unrealized_pnl_percent':None,'raw':{'IBAN':p.get('account','')} if p['kind']=='cash_account' else {}})
+                'price_date':requested,'unrealized_pnl_percent':None,'raw':{'IBAN':p.get('account','')} if p['kind']=='cash_account' else {'Serial no.':p['key']} if p['kind']=='call_deposit' else {}})
             if value is not None:market+=value
             if interest is not None:accrued_total+=interest
         snapshot={'id':'reconstructed-'+requested,'source':'reconstructed_ubs_activity_bloomberg_history',
@@ -332,6 +352,7 @@ def view(store,requested=None):
     accounting=accounting_view(store.path,snapshot)
     if result.get('review_flags') and accounting:
         accounting=dict(accounting);accounting['status']='Provisional historical valuation · review required'
+        accounting['portfolio_pnl_verified']=False
         accounting['provisional']=True;accounting['issues']=list(accounting.get('issues',[]))+result['review_flags']
     return result|{'exported_at':snapshot['exported_at'],'valuation_currency':snapshot['valuation_currency'],
         'summary':snapshot['summary'],'positions':positions,'accounting':accounting,

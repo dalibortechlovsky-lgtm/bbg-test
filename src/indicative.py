@@ -96,10 +96,21 @@ def indicative_ytd(snapshot, accounting, bloomberg, terms=None, activity=None, t
         category = record.get('category')
         trade_day, booked = record.get('trade_date'), record.get('booking_date')
         currency = record.get('currency')
-        if not trade_day or not booked or not snapshot['as_of'] < trade_day <= booked <= today.isoformat():
+        cash_category = category in {'income', 'fees', 'account_interest'}
+        if not trade_day or not booked or not (snapshot['as_of'] < booked <= today.isoformat()) or (not cash_category and not snapshot['as_of'] < trade_day <= booked):
             reason = 'settlement crosses the anchor or is incomplete'
         elif record.get('reversal'):
             reason = 'reversal needs reconciliation against its original entry'
+        elif cash_category:
+            rate = fx_rate(market_fx, currency, 'CZK') or fx_rate(snapshot, currency, 'CZK')
+            key = record.get('isin') or ('VALOR:' + record['valor'] if record.get('valor') else None)
+            anchors = [p for p in snapshot['positions'] if identity(p) == key] if key else []
+            if rate is None or record.get('amount') is None:
+                reason = 'cash posting requires amount and currency conversion'
+            elif category == 'income' and (not anchors or any(D(p.get('accrued_interest') or '0') for p in anchors)):
+                reason = 'income may release anchor accrued interest; accrual reconciliation required'
+            else:
+                delta = D(record['amount']) * rate
         elif category == 'security_trade':
             key = record.get('isin') or ('VALOR:' + record['valor'] if record.get('valor') else None)
             mark = marks.get(key)
@@ -142,7 +153,7 @@ def indicative_ytd(snapshot, accounting, bloomberg, terms=None, activity=None, t
         blockers.append('The anchor has no calculable NAV and YTD P/L; opening balances and funding records are required.')
     warnings.extend([
         'Includes supported recorded transactions after ' + snapshot['as_of'] + '; assumes no unrecorded trades, external cash flows or corporate actions.',
-        'Accrued interest is carried from the anchor; later income, fees, tax and financing are not estimated.',
+        'Accrued interest is carried from the anchor. Supported posted income and fees are included; unrecorded income, tax and financing are not estimated.',
         'Bloomberg receipt times are not exchange trade timestamps. Missing prices and FX retain their anchor values.',
         'This estimate covers the UBS portfolio only. Other banks are excluded.',
     ])

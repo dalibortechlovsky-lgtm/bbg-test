@@ -393,7 +393,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
         if c['currency_contribution_czk'] is not None:c['currency_contribution_czk']=str(D(c['currency_contribution_czk'])+adjustment)
         if c['total_pnl_czk'] is not None:c['total_pnl_czk']=str(D(c['total_pnl_czk'])+adjustment)
     total+=sum(adjustments.values(),ZERO)
-    confirmations,confirmation_issues=applicable(activity_confirmations,(activity or {}).get('ledger',[]),start,cutoff)
+    confirmations,confirmation_issues=applicable(activity_confirmations,(activity or {}).get('ledger',[]),start,cutoff,(activity or {}).get('accounts',[]))
     issues+=confirmation_issues
     coverage=[]
     for a in (activity or {}).get('accounts',[]):
@@ -502,7 +502,7 @@ def period_view(previous,snapshot,activity,rates,cash_reviews=None,activity_conf
         unsettled=any(r['category'] in {'security_trade','security_redemption','fx_conversion','deposit_principal'}
                       and (r['trade_date']<=start<r['booking_date'] or r['trade_date']<=end<r['booking_date'])
                       for r in (activity or {}).get('ledger',[]))
-        confirmations,confirmation_issues=applicable(activity_confirmations or [],(activity or {}).get('ledger',[]),start,end)
+        confirmations,confirmation_issues=applicable(activity_confirmations or [],(activity or {}).get('ledger',[]),start,end,(activity or {}).get('accounts',[]))
         covered=bool(activity) and not confirmation_issues and all(coverage_complete(with_confirmed_intervals(a,confirmations),start,end) for a in (activity or {}).get('accounts',[]))
         return {'from':start,'to':end,'label':'Daily P/L' if daily else 'Period P/L',
                 'pnl_czk':str(total) if complete and not unsettled and not review_pending else None,'currencies':rows,

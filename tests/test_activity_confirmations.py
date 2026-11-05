@@ -64,6 +64,14 @@ class ActivityConfirmationTests(unittest.TestCase):
         for different in [owner|{'until':'2026-10-13'},owner|{'account':'CH0000000000000000099'}]:
             self.assertFalse(calculate_accounting(close,baseline,view,activity_confirmations=[different])['portfolio_pnl_verified'])
 
+    def test_complete_bank_export_supersedes_conflicting_owner_statement(self):
+        row=confirmation(**{'from':'2026-01-01','until':'2026-01-10'})
+        data=ActivityStore(self.path).view()
+        valid,issues=applicable([row],data['ledger'],'2026-01-01','2026-01-10',data['accounts'])
+        self.assertEqual((valid,issues),([],[]))
+        short=[a|{'coverage_intervals':[('2026-01-01','2026-01-05')]} for a in data['accounts']]
+        self.assertTrue(applicable([row],data['ledger'],'2026-01-01','2026-01-10',short)[1])
+
     def test_zero_chf_account_needs_an_explicit_owner_statement_and_matching_balances(self):
         account='CH0000000000000000004'
         baseline=parse_statement_text(STATEMENT);close=snapshot();view=activity([])

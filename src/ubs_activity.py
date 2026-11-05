@@ -31,7 +31,7 @@ DEPOSITS = {'New Investment Money Market', 'Increase Money Market',
             'Reduction Money Market', 'Repayment Money Market'}
 INCOME = {'Dividend', 'Interest', 'Compensatory payments', 'Securities Lending',
           'Interest Pay. Money Market', 'CREDIT DUE TO CSDR'}
-FEES = {'Balance closing of service prices', 'Custody Price', 'Third-Party Charges'}
+FEES = {'Balance closing of service prices', 'Custody Price', 'Third-Party Charges', 'ADR/GDR Handling Fees'}
 PAYMENTS = {'credit', 'SEPA Credit', 'Special payment order'}
 FX = {'Purchase FX Spot', 'Sale FX Spot', 'Purchase FX Forward', 'Sale FX Forward'}
 NUMBER = r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)'
@@ -274,6 +274,8 @@ class ActivityStore:
                     record = economic_record(row)
                     prior = db.execute('SELECT payload FROM ubs_activity_records WHERE id=?', (row['id'],)).fetchone()
                     previous = json.loads(prior[0]) if prior else None
+                    if previous and previous.get('base_type') in FEES:
+                        previous = previous | {'category': 'fees'}
                     if previous and not equivalent_record(previous,record):
                         raise ValueError('Changed UBS transaction component; batch rejected. Review the broker correction.')
                     if previous and any(previous.get(k) is not None and record.get(k) is None for k in FX_OPTIONAL_TERMS) and record['category']=='fx_conversion':
@@ -301,6 +303,8 @@ class ActivityStore:
             if not has_table(db, 'ubs_activity_records'): return [], []
             db.execute('BEGIN')
             records = [json.loads(r[0]) for r in db.execute('SELECT payload FROM ubs_activity_records')]
+            # Reclassify known fee types without changing retained source cash.
+            records = [r | {'category': 'fees'} if r.get('base_type') in FEES else r for r in records]
             exports = [json.loads(r[0]) for r in db.execute('SELECT payload FROM ubs_activity_exports ORDER BY rowid')]
         return records, exports
 

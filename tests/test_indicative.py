@@ -100,6 +100,19 @@ class IndicativeTests(unittest.TestCase):
         self.assertEqual(D(r['market_change_czk']), D('2300'))
         self.assertEqual(len(r['applied_transactions']), 1)
 
+    def test_cash_income_after_anchor_included_once(self):
+        income=self.trade(category='income',amount='7',trade_date='2026-10-10')
+        r=self.calc([quote('/isin/US0000000001','100')],activity={'ledger':[income]})
+        self.assertEqual(D(r['estimated_ytd_pnl_czk']),D('2140'))
+        income['booking_date']='2026-10-14'
+        r=self.calc([quote('/isin/US0000000001','100')],activity={'ledger':[income]})
+        self.assertEqual(D(r['estimated_ytd_pnl_czk']),D('2000'))
+
+    def test_income_releasing_accrual_requires_reconciliation(self):
+        self.snapshot['positions'][0]['accrued_interest']='7'
+        r=self.calc([quote('/isin/US0000000001','100')],activity={'ledger':[self.trade(category='income',amount='7')]})
+        self.assertIsNone(r['estimated_ytd_pnl_czk'])
+
     def test_sale_removes_marked_quantity_and_adds_net_cash(self):
         r = self.calc([quote('/isin/US0000000001','110')], activity={'ledger':[self.trade(base_type='Sale Spot', amount='215')]})
         self.assertEqual(D(r['market_change_czk']), D('1900'))

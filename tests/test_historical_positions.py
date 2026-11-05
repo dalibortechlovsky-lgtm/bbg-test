@@ -33,13 +33,29 @@ class HistoricalPositionTests(unittest.TestCase):
         self.assertEqual(result['positions_as_of'],'2026-10-08')
         self.assertEqual(result['snapshot']['as_of'],'2026-10-08')
 
-    def test_missing_market_data_keeps_valuation_and_pnl_unavailable(self):
+    def test_missing_market_data_uses_flagged_source_estimate(self):
         result=view(SnapshotStore(self.db),'2026-01-02')
-        self.assertEqual(result['selection'],'reconstruction_pending')
-        self.assertIsNone(result['accounting'])
+        self.assertEqual(result['selection'],'reconstructed_provisional')
+        self.assertIsNotNone(result['accounting']['ytd_pnl_czk'])
+        self.assertFalse(result['accounting']['portfolio_pnl_verified'])
         self.assertTrue(any('/isin/'+ISIN in r['security'] for r in result['market_requests']))
-        self.assertTrue(any('USDCZK Curncy' in item for item in result['missing_market_data']))
-        self.assertEqual(next(p for p in result['positions'] if p['key']==ISIN)['quantity'],'1')
+        self.assertTrue(any('USDCZK Curncy' in item for item in result['review_flags']))
+        self.assertEqual(next(p for p in result['positions'] if p['isin']==ISIN)['quantity_or_balance'],'1')
+
+    def test_deposit_opened_after_year_end_is_retained(self):
+        row=posting('-50',number='DEP',kind='New Investment Money Market',
+            Description1='Fiduciary deposit Serial no. 1234567',
+            Description3='Number/Amt. 50 USD; Transaction price: 100 %')
+        ActivityStore(self.db).import_content(account_csv([row],opening='100'))
+        result=reconstruct(self.db,'2026-01-05')
+        deposit=next(p for p in result['positions'] if p['kind']=='call_deposit')
+        self.assertEqual(deposit['quantity'],'50')
+
+    def test_distant_maturity_coupon_schedule(self):
+        from src.historical_positions import _coupon_accrued
+        value=_coupon_accrued({'description':'Treasury 4.5% 15.11.2053'},'2026-09-30')
+        self.assertGreater(value,0)
+        self.assertLess(value,Decimal('2.25'))
 
     def test_activity_reconstructs_quantity_cash_and_bloomberg_valuation(self):
         buy=posting('-71',number='BUY',Description3='Number/Amt. 1; Transaction price: 70 USD')

@@ -133,6 +133,11 @@ class Handler(BaseHTTPRequestHandler):
                 data['ptd']=ptd
                 data['activity']=activity
                 data['accounting']=accounting_view(self.store.path,snapshot) if self.store else None
+                if chosen.get('review_flags') and data['accounting']:
+                    data['accounting']['portfolio_pnl_verified']=False
+                    data['accounting']['provisional']=True
+                    data['accounting']['status']='Provisional historical valuation · review required'
+                    data['accounting']['issues']+=chosen['review_flags']
                 data['snapshot_risk']=snapshot_risk(snapshot)
                 if path.endswith('.csv'):
                     self.reply(report_csv(data),'text/csv; charset=utf-8',filename='trader-report-'+data['date']+'.csv')

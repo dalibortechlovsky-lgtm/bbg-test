@@ -15,11 +15,17 @@ def conflicts(row,records):
                for r in records)
 
 
-def applicable(confirmations,records,start,cutoff):
+def applicable(confirmations,records,start,cutoff,accounts=None):
     valid=[];issues=[]
     for row in confirmations:
         if row['until']<start or row['from']>cutoff:continue
         if conflicts(row,records):
+            # A complete later bank export supersedes a no-activity statement;
+            # retain the statement in storage but do not use it as coverage.
+            from .accounting import coverage_complete
+            if any(a['account']==row['account'] and a['currency']==row['currency'] and
+                   coverage_complete(a,row['from'],min(row['until'],cutoff)) for a in accounts or []):
+                continue
             issues.append('Owner activity confirmation conflicts with UBS transactions: '+
                           row['currency']+' '+row['from']+' to '+row['until'])
         else:valid.append(row)
