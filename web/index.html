@@ -12,19 +12,19 @@
 <p class="muted subtitle">Whole-portfolio performance in CZK, with asset returns and currency moves shown separately.</p>
 <div class="statusline">
 <p>
-<small>Bloomberg</small> <span id="bbg">Checking…</span>
+<small>Bloomberg</small> <span id="bbg">Checkingâ€¦</span>
 </p>
 <p>
-<small>UBS</small> <span id="ubs">Checking…</span>
+<small>UBS</small> <span id="ubs">Checkingâ€¦</span>
 </p>
 </div>
 <section class="card">
-<h2>Estimated YTD performance · Bloomberg</h2>
-<p id="estimate-status" class="tag" aria-live="polite">Loading current estimate…</p>
+<h2>Estimated YTD performance Â· Bloomberg</h2>
+<p id="estimate-status" class="tag" aria-live="polite">Loading current estimateâ€¦</p>
 <div class="grid">
-<div><small>Estimated YTD P/L · CZK</small><p id="estimate-ytd" class="metric">—</p></div>
-<div><small>Estimated UBS net assets · CZK</small><p id="estimate-nav" class="metric">—</p></div>
-<div><small>Difference to NAV check · CZK</small><p id="estimate-change" class="metric">—</p></div>
+<div><small>Estimated YTD P/L Â· CZK</small><p id="estimate-ytd" class="metric">â€”</p></div>
+<div><small>Estimated UBS net assets Â· CZK</small><p id="estimate-nav" class="metric">â€”</p></div>
+<div><small>Difference to NAV check Â· CZK</small><p id="estimate-change" class="metric">â€”</p></div>
 </div>
 <p id="estimate-time" class="muted"></p>
 <p id="estimate-coverage" class="muted"></p>
@@ -39,9 +39,9 @@
 <section class="card">
 <h2>Total AUM across banks</h2>
 <div class="grid">
-<div><small>Consolidated AUM · CZK</small><p id="aum-total" class="metric">—</p></div>
-<div><small>UBS net assets · CZK</small><p id="aum-ubs" class="metric">—</p></div>
-<div><small>Other banks · CZK</small><p id="aum-other" class="metric">—</p></div>
+<div><small>Consolidated AUM Â· CZK</small><p id="aum-total" class="metric">â€”</p></div>
+<div><small>UBS net assets Â· CZK</small><p id="aum-ubs" class="metric">â€”</p></div>
+<div><small>Other banks Â· CZK</small><p id="aum-other" class="metric">â€”</p></div>
 </div>
 <p id="aum-basis" class="muted">Import a bank snapshot to add it to AUM.</p>
 </section>
@@ -58,7 +58,7 @@
 </section>
 <section class="card">
 <h2>Update UBS portfolio</h2>
-<p class="muted">Select the positions CSV and each currency account’s transaction CSV together. Include the prior year-end statement PDF once. For the first setup, export transactions from 1 January through the valuation date; later overlapping exports merge safely. Files are recognized and checked as one batch.</p>
+<p class="muted">Select the positions CSV and each currency accountâ€™s transaction CSV together. Include the prior year-end statement PDF once. For the first setup, export transactions from 1 January through the valuation date; later overlapping exports merge safely. Files are recognized and checked as one batch.</p>
 <form id="upload">
 <input id="file" type="file" accept=".csv,.pdf,text/csv,application/pdf" multiple required>
 <button id="import" type="submit">Import selected files</button>
@@ -79,22 +79,22 @@
 </p>
 <div class="grid">
 <div>
-<small>Net assets · CZK · incl. accrued interest</small>
-<p id="desk-nav" class="metric">—</p>
+<small>Net assets Â· CZK Â· incl. accrued interest</small>
+<p id="desk-nav" class="metric">â€”</p>
 </div>
 <div>
-<small>YTD P/L · CZK</small>
-<p id="desk-ytd" class="metric">—</p>
+<small>YTD P/L Â· CZK</small>
+<p id="desk-ytd" class="metric">â€”</p>
 </div>
 <div>
-<small id="desk-period-label">Daily / period P/L · CZK</small>
-<p id="desk-period" class="metric">—</p>
+<small id="desk-period-label">Daily / period P/L Â· CZK</small>
+<p id="desk-period" class="metric">â€”</p>
 <small id="desk-period-date">
 </small>
 </div>
 <div>
-<small>Recorded realized · native currencies</small>
-<p id="desk-realized" class="metric">—</p>
+<small>Recorded realized Â· native currencies</small>
+<p id="desk-realized" class="metric">â€”</p>
 <small>Historical average cost, including recorded fees</small>
 </div>
 </div>
@@ -128,7 +128,7 @@
 <th>Currency</th>
 <th>Grouped derivatives cash result</th>
 <th>Cash/deposits &amp; unallocated items</th>
-<th>Outside trading profit · native</th><th>FX hedge cash · native</th>
+<th>Outside trading profit Â· native</th><th>FX hedge cash Â· native</th>
 <th>Internal FX fixing difference CZK</th>
 </tr>
 </thead>
@@ -139,7 +139,7 @@
 </details>
 </section>
 <section class="card">
-<h2>UBS snapshot attribution · audit detail</h2>
+<h2>UBS snapshot attribution Â· audit detail</h2>
 <p class="muted">Carried holdings show price returns against the year-start market price; new holdings use remaining average acquisition cost. Income is included in asset P/L. Cash and deposits are covered in the portfolio totals above.</p>
 <label>Show <select id="desk-position-filter">
 <option value="open">Open positions</option>
@@ -169,16 +169,16 @@
 <h2>Positions and P&amp;L as of a date</h2>
 <p class="muted">Recorded transactions reconstruct quantities and cash. Bloomberg supplies the selected date's closing prices and FX, including dates with a bank snapshot. Missing Bloomberg prices are never replaced with bank marks or interpolated prices. Bond accrual estimates are flagged.</p>
 <p><label>As of <input id="history-date" type="date"></label> <button id="history-load">Refresh selected date</button></p>
-<p class="muted">Selecting a date automatically requests missing Bloomberg prices and FX. Keep the bridge running. New dates usually take 1–2 minutes; P/L appears automatically when ready. Weekends and holidays use Bloomberg’s previous available close.</p>
+<p class="muted">Selecting a date automatically requests missing Bloomberg prices and FX. Keep the bridge running. New dates usually take 1â€“2 minutes; P/L appears automatically when ready. Weekends and holidays use Bloombergâ€™s previous available close.</p>
 <p id="history-status" class="tag" role="status" aria-live="polite">Select a date.</p>
 <div id="history-blockers" class="tag" role="status"></div>
 <p id="history-context" class="muted"></p>
 <div class="grid">
-<div><small>Adjusted opening value · CZK</small><p id="history-opening-nav" class="metric">—</p></div>
-<div><small>Transferred opening basis · CZK</small><p id="history-opening-basis" class="metric">—</p></div>
-<div><small>Net external funding · CZK</small><p id="history-funding" class="metric">—</p></div>
-<div><small>Historical net assets · CZK · incl. accrued</small><p id="history-nav" class="metric">—</p></div>
-<div><small>Historical YTD P/L · CZK</small><p id="history-ytd" class="metric">—</p></div>
+<div><small>Adjusted opening value Â· CZK</small><p id="history-opening-nav" class="metric">â€”</p></div>
+<div><small>Transferred opening basis Â· CZK</small><p id="history-opening-basis" class="metric">â€”</p></div>
+<div><small>Net external funding Â· CZK</small><p id="history-funding" class="metric">â€”</p></div>
+<div><small>Historical net assets Â· CZK Â· incl. accrued</small><p id="history-nav" class="metric">â€”</p></div>
+<div><small>Historical YTD P/L Â· CZK</small><p id="history-ytd" class="metric">â€”</p></div>
 </div>
 <p id="history-formula" class="muted"></p>
 <div id="history-trade-calculations"></div>
@@ -197,7 +197,7 @@
 <th>Option / expiry</th>
 <th>Currency</th>
 <th>Max premium loss from current mark</th>
-<th>Underlying −10% at expiry</th>
+<th>Underlying âˆ’10% at expiry</th>
 <th>Unchanged at expiry</th>
 <th>Underlying +10% at expiry</th>
 </tr>
@@ -323,7 +323,7 @@
 <th>Booking / value date</th>
 <th>Type / instrument</th>
 <th>ISIN / Valor</th>
-<th>Number/amount · price</th>
+<th>Number/amount Â· price</th>
 <th>Currency</th>
 <th>Net cash</th>
 <th>Transaction no.</th>
@@ -380,15 +380,15 @@
 <div class="grid">
 <div>
 <small>Reported market value</small>
-<p id="value">—</p>
+<p id="value">â€”</p>
 </div>
 <div>
-<small>Reported accrued interest · separate</small>
-<p id="accrued">—</p>
+<small>Reported accrued interest Â· separate</small>
+<p id="accrued">â€”</p>
 </div>
 <div>
 <small>Position count</small>
-<p id="count">—</p>
+<p id="count">â€”</p>
 </div>
 </div>
 <ul id="warnings" class="muted">
@@ -399,16 +399,16 @@
 <p id="analytics-date" class="tag">Import a positions snapshot to calculate analytics.</p>
 <div class="grid">
 <div>
-<small>Indicative market value · mixed dates</small>
-<p id="indicative-value">—</p>
+<small>Indicative market value Â· mixed dates</small>
+<p id="indicative-value">â€”</p>
 </div>
 <div>
-<small>Estimated change from UBS snapshot · not daily P/L</small>
-<p id="valuation-change">—</p>
+<small>Estimated change from UBS snapshot Â· not daily P/L</small>
+<p id="valuation-change">â€”</p>
 </div>
 <div>
-<small>Snapshot unrealized P/L · cost-covered holdings only</small>
-<p id="snapshot-pnl">—</p>
+<small>Snapshot unrealized P/L Â· cost-covered holdings only</small>
+<p id="snapshot-pnl">â€”</p>
 </div>
 </div>
 <p id="analytics-coverage" class="muted">
@@ -520,8 +520,8 @@
 <tr>
 <th>Group / ticker</th>
 <th>Position display</th>
-<th>Notional · source units</th>
-<th>Export MktPx / CostPx · units unverified</th>
+<th>Notional Â· source units</th>
+<th>Export MktPx / CostPx Â· units unverified</th>
 <th>Strike</th>
 <th>Trade date</th>
 <th>Expiry / delivery</th>
@@ -536,7 +536,7 @@
 <p class="muted">Base records are not yet independently valued: price scales, quantities and contract multipliers require verification. MARS conversion and Greeks are not used for calculations.</p>
 </section>
 <section class="card">
-<h2>Daily &amp; realized P/L · average cost</h2>
+<h2>Daily &amp; realized P/L Â· average cost</h2>
 <p class="muted">Separate verified event ledger; KeyTrader summaries are not treated as dated fills. Net amounts include fees. Totals cover imported history only and remain in native currencies.</p>
 <p>
 <a style="color:#9bd3ff" href="/api/templates/performance.csv">Download performance CSV template</a>
@@ -561,7 +561,7 @@
 <thead>
 <tr>
 <th>Currency</th>
-<th>Realized · imported history</th>
+<th>Realized Â· imported history</th>
 <th>YTD realized</th>
 <th>YTD net income</th>
 </tr>
@@ -598,7 +598,7 @@
 <th>Security</th>
 <th>Closed quantity</th>
 <th>Currency</th>
-<th>P/L · fees included</th>
+<th>P/L Â· fees included</th>
 </tr>
 </thead>
 <tbody id="realized-pnl">
@@ -607,7 +607,7 @@
 </div>
 </section>
 <section class="card">
-<h2>Derivatives risk · verified inputs</h2>
+<h2>Derivatives risk Â· verified inputs</h2>
 <p class="muted">European vanilla option Greeks and full spot/volatility scenarios; linear futures delta. Unsupported or missing terms are excluded. Inputs older than 15 minutes are excluded from totals. Model values are separate from UBS valuations.</p>
 <p>
 <a href="/api/templates/risk.csv" style="color:#9bd3ff">Download risk CSV template</a>
@@ -635,7 +635,7 @@
 <th>Gamma 1% P/L</th>
 <th>Vega 1pp</th>
 <th>Theta/day</th>
-<th>Spot −10%</th>
+<th>Spot âˆ’10%</th>
 <th>Spot +10%</th>
 <th>Vol +5pp</th>
 </tr>
@@ -654,7 +654,7 @@
 <th>Gamma 1%</th>
 <th>Vega 1pp</th>
 <th>Theta/day</th>
-<th>Spot −10%</th>
+<th>Spot âˆ’10%</th>
 <th>Spot +10%</th>
 </tr>
 </thead>
@@ -738,26 +738,44 @@
 </details>
 <p id="error" aria-live="polite">
 </p>
-<p class="muted">Dated UBS valuations · Bloomberg market data · Order execution disabled</p>
+<p class="muted">Dated UBS valuations Â· Bloomberg market data Â· Order execution disabled</p>
 </main>
 <script>
 let state={positions:[],snapshot:null},historicalState=null;
 const el=id=>document.getElementById(id);
-const money=value=>value===null||value===undefined?'—':new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(Number(value));
-const amount=value=>value===null||value===undefined?'—':new Intl.NumberFormat(undefined,{maximumFractionDigits:6}).format(Number(value));
+const money=value=>value===null||value===undefined?'â€”':new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(Number(value));
+const amount=value=>value===null||value===undefined?'â€”':new Intl.NumberFormat(undefined,{maximumFractionDigits:6}).format(Number(value));
 function row(target,values){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td)}target.append(tr)}
-function numericRow(target,values,numeric=[]){row(target,values);const cells=el(target.id).lastElementChild.children;for(const index of numeric){cells[index].classList.add('num');const value=Number(String(values[index]).replace(/[^0-9.-]/g,''));if(Number.isFinite(value)&&values[index]!=='—')cells[index].classList.add(value<0?'negative':'positive')}}
-function renderDeskAssets(){el('desk-assets').replaceChildren();const filter=el('desk-position-filter').value;for(const p of state.accounting?.assets||[]){if(filter==='open'&&!Number(p.quantity)||filter==='closed'&&Number(p.quantity))continue;numericRow(el('desk-assets'),[p.description+' · '+p.currency,money(p.quantity),p.native_price_return_percent===null?'—':money(p.native_price_return_percent)+'%',money(p.ytd_asset_pnl_native),money(p.asset_contribution_czk),money(p.realized_native),p.quantity_status],[1,2,3,4,5])}}
+function numericRow(target,values,numeric=[]){row(target,values);const cells=el(target.id).lastElementChild.children;for(const index of numeric){cells[index].classList.add('num');const value=Number(String(values[index]).replace(/[^0-9.-]/g,''));if(Number.isFinite(value)&&values[index]!=='â€”')cells[index].classList.add(value<0?'negative':'positive')}}
+function renderDeskAssets(){el('desk-assets').replaceChildren();const filter=el('desk-position-filter').value;for(const p of state.accounting?.assets||[]){if(filter==='open'&&!Number(p.quantity)||filter==='closed'&&Number(p.quantity))continue;numericRow(el('desk-assets'),[p.description+' Â· '+p.currency,money(p.quantity),p.native_price_return_percent===null?'â€”':money(p.native_price_return_percent)+'%',money(p.ytd_asset_pnl_native),money(p.asset_contribution_czk),money(p.realized_native),p.quantity_status],[1,2,3,4,5])}}
 function renderCorrectedTrades(id,a){
  const target=el(id);target.replaceChildren();if(!a)return;
- const title=document.createElement('h3');title.textContent='Corrected trades · valuation-date FX';target.append(title);
- const summary=document.createElement('p');summary.textContent='Open + portfolio FX/costs: '+money(a.open_subtotal_czk)+' CZK · Closed + income/pooled margin: '+money(a.closed_subtotal_czk)+' CZK · Total: '+money(a.ytd_pnl_czk)+' CZK';target.append(summary);
+ const title=document.createElement('h3');title.textContent='Corrected trades Â· valuation-date FX';target.append(title);
+ const summary=document.createElement('p');summary.textContent='Open + portfolio FX/costs: '+money(a.open_subtotal_czk)+' CZK Â· Closed + income/pooled margin: '+money(a.closed_subtotal_czk)+' CZK Â· Total: '+money(a.ytd_pnl_czk)+' CZK';target.append(summary);
+ for(const d of a.external_deposits||[]){
+  const title=document.createElement('h3');title.textContent=d.bank+' deposit Â· included in NAV and YTD';target.append(title);
+  const text=document.createElement('p');text.textContent='Principal: '+money(d.principal)+' '+d.currency+' Â· Estimated interest: '+money(d.interest_native)+' '+d.currency+' Â· Value: '+money(d.closing_czk)+' CZK Â· YTD contribution: '+money(d.ytd_pnl_czk)+' CZK';target.append(text);
+  const note=document.createElement('p');note.className='muted';note.textContent=d.basis;target.append(note);
+ }
  const details=document.createElement('details'),heading=document.createElement('summary');heading.textContent='Trade rows and separate portfolio components';details.append(heading);
  const table=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody');row(head,['Trade / currency','Status / close date','Quantity','Native P/L','P/L CZK']);table.append(head,body);
- for(const p of a.positions||[])row(body,[p.description+' · '+p.currency,p.status+(p.closed_on?' · '+p.closed_on:''),money(p.quantity),money(p.pnl_native),money(p.pnl_czk)]);
+ for(const p of a.positions||[])row(body,[p.description+' Â· '+p.currency,p.status+(p.closed_on?' Â· '+p.closed_on:''),money(p.quantity),money(p.pnl_native),money(p.pnl_czk)]);
  for(const [label,key] of [['Income','income_czk'],['Fees / debit interest','fees_czk'],['Portfolio FX','portfolio_fx_czk'],['Other balances','other_balances_czk'],['Pooled futures margin','pooled_margin_czk']])row(body,[label,'Separate portfolio component','','',money(a.components?.[key])]);
  const scroll=document.createElement('div');scroll.className='scroll';scroll.append(table);details.append(scroll);target.append(details);
  const basis=document.createElement('p');basis.className='muted';basis.textContent=a.basis;target.append(basis);
+ const fees=a.fee_breakdown;
+ if(fees){
+  const heading=document.createElement('h3');heading.textContent='Posted fees and account interest Â· through '+fees.as_of;target.append(heading);
+  const total=document.createElement('p');total.textContent='Net recorded cost: '+money(fees.total_czk)+' CZK';target.append(total);
+  const table=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody');row(head,['Category','Currency','Charges','Credits','Net cost','Net cost CZK']);table.append(head,body);
+  for(const g of fees.groups)row(body,[g.category,g.currency,money(g.charges),money(g.credits),money(g.net),money(g.net_czk)]);
+  const scroll=document.createElement('div');scroll.className='scroll';scroll.append(table);target.append(scroll);
+  const note=document.createElement('p');note.className='muted';note.textContent=fees.basis;target.append(note);
+  const details=document.createElement('details'),label=document.createElement('summary');label.textContent='Individual charges and credits ('+fees.entries.length+')';details.append(label);
+  const ledger=document.createElement('table'),lh=document.createElement('thead'),lb=document.createElement('tbody');row(lh,['Booked','Reference','Category','Description','Currency','Net cost','CZK equivalent']);ledger.append(lh,lb);
+  for(const f of fees.entries)row(lb,[f.date,f.reference,f.category,f.description,f.currency,money(f.cost_native),money(f.cost_czk)]);
+  const wrap=document.createElement('div');wrap.className='scroll';wrap.append(ledger);details.append(wrap);target.append(details);
+ }
  for(const issue of a.issues||[]){const p=document.createElement('p');p.className='tag';p.textContent=issue;target.append(p);}
 }
 function renderEstimate(){
@@ -767,7 +785,7 @@ function renderEstimate(){
  el('estimate-ytd').textContent=money(a?.estimated_ytd_pnl_czk);
  el('estimate-nav').textContent=money(a?.estimated_nav_czk);
  el('estimate-change').textContent=money(a?.trade_calculations?.reconciliation_difference_czk);
- el('estimate-time').textContent=a?'Accounting anchor: '+a.anchor_as_of+' · Bloomberg receipts: '+(a.quote_time_from?new Date(a.quote_time_from).toLocaleString()+' – '+new Date(a.quote_time_to).toLocaleString():'none fresh')+' · Refreshes every 30 seconds.':'';
+ el('estimate-time').textContent=a?'Accounting anchor: '+a.anchor_as_of+' Â· Bloomberg receipts: '+(a.quote_time_from?new Date(a.quote_time_from).toLocaleString()+' â€“ '+new Date(a.quote_time_to).toLocaleString():'none fresh')+' Â· Refreshes every 30 seconds.':'';
  el('estimate-coverage').textContent=a?a.fresh_price_count+' / '+a.security_count+' securities have fresh Bloomberg prices. No bank-price fallback.':'';
  el('estimate-basis').textContent=a?.basis||'';
  for(const [id,values] of [['estimate-blockers',a?.blockers],['estimate-warnings',a?.warnings]]){
@@ -776,22 +794,22 @@ function renderEstimate(){
  el('estimate-positions').replaceChildren();
  for(const p of a?.positions||[])row(el('estimate-positions'),[p.description,p.currency,money(p.change_czk),p.price_observed_at?new Date(p.price_observed_at).toLocaleString():'See Bloomberg coverage',p.notes.join('; ')]);
 }
-function renderExternal(){el('aum-total').textContent=money(state.aum?.consolidated_czk);el('aum-ubs').textContent=money(state.aum?.ubs_czk);el('aum-other').textContent=money(state.aum?.other_banks_czk);const dates=state.aum?.valuation_dates?.join(', ')||'none';el('aum-basis').textContent=(state.aum?.basis||'')+' Valuation dates: '+dates+(state.aum?.mixed_valuation_dates?' (mixed-date AUM). ':' · ')+(state.external_positions?.basis||'');el('external-positions').replaceChildren();for(const p of state.external_positions?.positions||[])row(el('external-positions'),[p.institution+' · '+p.portfolio,p.as_of,p.description+' · '+p.currency,amount(p.value_native_including_accrued)+' '+p.currency,money(p.value_czk),p.fx_source?p.fx_source+' · '+p.fx_as_of:'FX unavailable']);if(!state.external_positions?.positions?.length)row(el('external-positions'),['No other-bank snapshots imported.'])}
+function renderExternal(){el('aum-total').textContent=money(state.aum?.consolidated_czk);el('aum-ubs').textContent=money(state.aum?.ubs_czk);el('aum-other').textContent=money(state.aum?.other_banks_czk);const dates=state.aum?.valuation_dates?.join(', ')||'none';el('aum-basis').textContent=(state.aum?.basis||'')+' Valuation dates: '+dates+(state.aum?.mixed_valuation_dates?' (mixed-date AUM). ':' Â· ')+(state.external_positions?.basis||'');el('external-positions').replaceChildren();for(const p of state.external_positions?.positions||[])row(el('external-positions'),[p.institution+' Â· '+p.portfolio,p.as_of,p.description+' Â· '+p.currency,amount(p.value_native_including_accrued)+' '+p.currency,money(p.value_czk),p.fx_source?p.fx_source+' Â· '+p.fx_as_of:'FX unavailable']);if(!state.external_positions?.positions?.length)row(el('external-positions'),['No other-bank snapshots imported.'])}
 function renderHistoricalBlockers(data){
  const target=el('history-blockers');target.replaceChildren();
  const missing=data.missing_market_data||[];
  if(!missing.length)return;
  const heading=document.createElement('p');
  const offline=/offline|not connected/i.test(state.bloomberg||'');
- heading.textContent=missing.length+' price / FX input'+(missing.length===1?'':'s')+' remaining. '+(offline?'The Bloomberg bridge is offline. Keep Bloomberg signed in and start the bridge; this page will resume automatically.':'No refresh needed — P/L will appear automatically. New dates usually take 1–2 minutes; unavailable quotes can take longer.');target.append(heading);
+ heading.textContent=missing.length+' price / FX input'+(missing.length===1?'':'s')+' remaining. '+(offline?'The Bloomberg bridge is offline. Keep Bloomberg signed in and start the bridge; this page will resume automatically.':'No refresh needed â€” P/L will appear automatically. New dates usually take 1â€“2 minutes; unavailable quotes can take longer.');target.append(heading);
  const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='View pending inputs';details.append(summary);
  const list=document.createElement('ul');
- for(const item of missing){const key=item.split(': ')[0];const holding=(data.positions||[]).find(p=>p.key===key||p.isin===key||'VALOR:'+p.valor===key);const li=document.createElement('li');li.textContent=(holding?holding.description+' — ':'')+item;list.append(li)}
+ for(const item of missing){const key=item.split(': ')[0];const holding=(data.positions||[]).find(p=>p.key===key||p.isin===key||'VALOR:'+p.valor===key);const li=document.createElement('li');li.textContent=(holding?holding.description+' â€” ':'')+item;list.append(li)}
  details.append(list);target.append(details);
 }
 function renderHistorical(data){historicalState=data;renderHistoricalBlockers(data);renderCorrectedTrades('history-trade-calculations',data.accounting?.trade_calculations);el('history-positions').replaceChildren();el('history-flows').replaceChildren();el('history-missing').replaceChildren();const pending=!!data.missing_market_data?.length;const loading=pending&&!data.issues?.length;
 el('history-status').classList.toggle('history-loading',loading);el('history-ytd').setAttribute('aria-busy',String(loading));
-el('history-status').textContent=loading?((/offline|not connected/i.test(state.bloomberg||''))?'Waiting for Bloomberg bridge…':(Date.now()-historyStartedAt>180000?'Still waiting for Bloomberg prices and FX…':'Loading Bloomberg prices and FX…')):(data.message||'Historical view unavailable.');el('history-context').textContent='Requested date: '+(data.requested_as_of||'—')+' · Positions/valuation date: '+(data.positions_as_of||'unavailable')+' · Source UBS snapshot: '+(data.source_snapshot_as_of||'none')+' · '+(data.valuation_basis||'');const bridge=data.accounting?.nav_bridge;el('history-opening-nav').textContent=money(bridge?.opening_nav_czk);el('history-opening-basis').textContent=money(bridge?.transferred_opening_basis_czk);el('history-funding').textContent=money(bridge?.net_external_flows_czk);el('history-nav').textContent=money(data.accounting?.nav_czk);el('history-ytd').textContent=data.missing_market_data?.length?'Loading…':money(data.accounting?.ytd_pnl_czk);el('history-formula').textContent=bridge?'YTD P/L = closing net assets − adjusted opening value − net external funding. Adjusted opening value includes confirmed year-end values of instruments held elsewhere that settled into UBS.':'';for(const f of bridge?.external_flows||[])row(el('history-flows'),[f.date,f.reference,amount(f.amount_native)+' '+f.currency,amount(f.fx_to_czk),amount(f.amount_czk)]);if(bridge&&!bridge.external_flows.length)row(el('history-flows'),['No external funding in the selected period.']);for(const p of data.positions||[]){const quantity=p.quantity??p.quantity_or_balance;const price=p.price??p.market_price?.value;const accrued=p.accrued_native??p.accrued_interest;const value=p.market_value_native??p.market_value;const missing=p.missing||[];const reviews=p.review_required||[];row(el('history-positions'),[p.description,p.currency,amount(quantity),amount(price)+(p.price_convention==='percent'||p.market_price?.convention==='percent'?'%':''),amount(accrued),amount(value),missing.length?missing.join(', '):reviews.length?'Review required':'Available'])}const notices=[...(data.issues||[]),...(data.review_flags||[]),...(data.accounting?.issues||[])];for(const item of [...new Set(notices)]){const li=document.createElement('li');li.textContent=item;el('history-missing').append(li)}}
+el('history-status').textContent=loading?((/offline|not connected/i.test(state.bloomberg||''))?'Waiting for Bloomberg bridgeâ€¦':(Date.now()-historyStartedAt>180000?'Still waiting for Bloomberg prices and FXâ€¦':'Loading Bloomberg prices and FXâ€¦')):(data.message||'Historical view unavailable.');el('history-context').textContent='Requested date: '+(data.requested_as_of||'â€”')+' Â· Positions/valuation date: '+(data.positions_as_of||'unavailable')+' Â· Source UBS snapshot: '+(data.source_snapshot_as_of||'none')+' Â· '+(data.valuation_basis||'');const bridge=data.accounting?.nav_bridge;el('history-opening-nav').textContent=money(bridge?.opening_nav_czk);el('history-opening-basis').textContent=money(bridge?.transferred_opening_basis_czk);el('history-funding').textContent=money(bridge?.net_external_flows_czk);el('history-nav').textContent=money(data.accounting?.nav_czk);el('history-ytd').textContent=data.missing_market_data?.length?'Loadingâ€¦':money(data.accounting?.ytd_pnl_czk);el('history-formula').textContent=bridge?'YTD P/L = closing net assets âˆ’ adjusted opening value âˆ’ net external funding. Adjusted opening value includes confirmed year-end outside-bank assets, including deposits still held at other banks.':'';for(const f of bridge?.external_flows||[])row(el('history-flows'),[f.date,f.reference,amount(f.amount_native)+' '+f.currency,amount(f.fx_to_czk),amount(f.amount_czk)]);if(bridge&&!bridge.external_flows.length)row(el('history-flows'),['No external funding in the selected period.']);for(const p of data.positions||[]){const quantity=p.quantity??p.quantity_or_balance;const price=p.price??p.market_price?.value;const accrued=p.accrued_native??p.accrued_interest;const value=p.market_value_native??p.market_value;const missing=p.missing||[];const reviews=p.review_required||[];row(el('history-positions'),[p.description,p.currency,amount(quantity),amount(price)+(p.price_convention==='percent'||p.market_price?.convention==='percent'?'%':''),amount(accrued),amount(value),missing.length?missing.join(', '):reviews.length?'Review required':'Available'])}const notices=[...(data.issues||[]),...(data.review_flags||[]),...(data.accounting?.issues||[])];for(const item of [...new Set(notices)]){const li=document.createElement('li');li.textContent=item;el('history-missing').append(li)}}
 let historyRequestSerial=0,historyPollTimer=null,historyBusy=false,historyStartedAt=0;
 async function loadHistorical(request=false){
  const day=el('history-date').value;if(!day||!el('history-date').checkValidity())return;
@@ -799,7 +817,7 @@ async function loadHistorical(request=false){
  clearTimeout(historyPollTimer);historyBusy=true;
  const serial=++historyRequestSerial;el('history-load').disabled=true;
  if(request){historyStartedAt=Date.now();el('history-status').classList.add('history-loading');el('history-ytd').setAttribute('aria-busy','true')}
- if(request){el('history-status').textContent='Loading Bloomberg prices and FX…';el('history-ytd').textContent='Loading…';el('history-blockers').replaceChildren();el('history-trade-calculations').replaceChildren()}
+ if(request){el('history-status').textContent='Loading Bloomberg prices and FXâ€¦';el('history-ytd').textContent='Loadingâ€¦';el('history-blockers').replaceChildren();el('history-trade-calculations').replaceChildren()}
  try{const response=await fetch('/api/positions/history'+(request?'':'?as_of='+encodeURIComponent(day)),request?{method:'POST',headers:{'Content-Type':'application/json','X-Historical-Action':'request'},body:JSON.stringify({as_of:day})}:{});
  const data=await response.json();if(serial!==historyRequestSerial||day!==el('history-date').value)return;
  if(!response.ok)throw Error(data.error||'Historical reconstruction failed');renderHistorical(data)
@@ -810,30 +828,30 @@ async function loadHistorical(request=false){
 }
 el('history-date').addEventListener('change',()=>loadHistorical(true));
 el('history-load').addEventListener('click',()=>loadHistorical(true));
-function renderCashReview(){el('desk-cash-review').replaceChildren();for(const r of state.accounting?.cash_decisions||[]){const tr=document.createElement('tr');for(const value of [r.booking_date+' · '+r.transaction_no,r.description+' · '+r.reference+(r.opening_value?' · Opening basis '+amount(r.opening_value)+' '+r.opening_currency+' at '+r.opening_as_of:''),r.currency,money(r.amount)]){const td=document.createElement('td');td.textContent=value;tr.append(td)}const td=document.createElement('td'),select=document.createElement('select');select.add(new Option('Review needed',''));const choices=r.category==='transfer_review'?[['external_funding','External funding'],['asset_settlement','Trade expiry / settlement'],['trading_profit','Outside trading profit (no principal)']]:[['asset_settlement','Trading result'],['fx_hedge_settlement','FX hedge result']];for(const [value,label] of choices)select.add(new Option(label,value));select.value=r.decision||'';const button=document.createElement('button');button.textContent=r.decision?'Save change':'Confirm';button.addEventListener('click',async()=>{if(!select.value){el('cash-review-message').textContent='Choose the source-confirmed classification first.';return}button.disabled=true;try{const payload={id:r.id,classification:select.value,reason:'Owner confirmed in dashboard: '+select.options[select.selectedIndex].text};if(select.value==='asset_settlement'&&r.opening_value)Object.assign(payload,{opening_value:r.opening_value,opening_currency:r.opening_currency,opening_as_of:r.opening_as_of});const response=await fetch('/api/accounting/cash-review',{method:'POST',headers:{'Content-Type':'application/json','X-Accounting-Action':'manage'},body:JSON.stringify([payload])});const result=await response.json();if(!response.ok)throw Error(result.error||'Review could not be saved');el('cash-review-message').textContent='Decision saved; prior decisions remain in the audit history.';await refresh()}catch(error){el('cash-review-message').textContent=error.message;button.disabled=false}});td.append(select,' ',button);tr.append(td);el('desk-cash-review').append(tr)}}
-function renderDesk(){renderCashReview();for(const id of ['desk-currencies','desk-cash-pnl','desk-cash-checks','desk-issues','desk-risk','desk-risk-missing'])el(id).replaceChildren();const a=state.accounting;el('desk-status').textContent=a?.status||'UBS data needed';el('desk-date').textContent=a?.opening_as_of?a.opening_as_of+' → '+a.as_of+' · Closing UBS valuation':'Import the prior year-end statement PDF and current UBS files.';el('desk-nav').textContent=money(a?.nav_czk);el('desk-ytd').textContent=money(a?.ytd_pnl_czk);el('desk-realized').textContent=Object.entries(a?.realized_totals||{}).filter(([,v])=>Number(v)!==0).map(([c,v])=>money(v)+' '+c).join(' / ')||'—';const period=a?.period;el('desk-period-label').textContent=(period?.label||'Daily / period P/L')+' · CZK';el('desk-period').textContent=money(period?.pnl_czk);el('desk-period-date').textContent=period?period.from+' → '+period.to+' · '+period.status:'Needs an earlier closing snapshot';el('desk-basis').textContent=(a?.basis||'')+(a?.activity_confirmations?.length?' Owner-confirmed coverage: '+a.activity_confirmations.map(c=>c.currency+' '+c.from+' to '+c.until+' ('+(c.kind==='no_activity'?'no activity':'no further transactions')+')').join('; ')+'.':'');for(const c of a?.currencies||[]){numericRow(el('desk-currencies'),[c.currency,money(c.native_asset_pnl),money(c.asset_contribution_czk),money(c.currency_contribution_czk),money(c.total_pnl_czk)],[1,2,3,4]);numericRow(el('desk-cash-pnl'),[c.currency,money(c.futures_settlements_native),money(c.cash_deposit_income_costs_native),money(c.outside_trading_profit_native),money(c.fx_hedge_settlements_native),money(c.internal_fx_fixing_difference_czk)],[1,2,3,4])}for(const issue of a?.issues||[]){const li=document.createElement('li');li.textContent=issue;el('desk-issues').append(li)}for(const c of a?.cash_checks||[])numericRow(el('desk-cash-checks'),[c.description,c.currency,money(c.expected),money(c.reported),money(c.difference)],[2,3,4]);el('desk-pending').textContent=(a?.pending_settlements||[]).length+' unsettled transactions identified at the valuation cutoff.';renderDeskAssets();const risk=state.snapshot_risk;el('desk-risk-basis').textContent=risk?.basis||'';for(const p of risk?.rows||[])numericRow(el('desk-risk'),[p.description+' · '+p.expiry,p.currency,money('-'+p.maximum_premium_loss),money(p.expiry_pnl['-0.1']),money(p.expiry_pnl['0']),money(p.expiry_pnl['0.1'])],[2,3,4,5]);if(!risk?.rows.length)row(el('desk-risk'),['No supported option expiry scenarios available.']);for(const p of risk?.uncovered||[]){const li=document.createElement('li');li.textContent=p.description+': '+p.reason;el('desk-risk-missing').append(li)}}
+function renderCashReview(){el('desk-cash-review').replaceChildren();for(const r of state.accounting?.cash_decisions||[]){const tr=document.createElement('tr');for(const value of [r.booking_date+' Â· '+r.transaction_no,r.description+' Â· '+r.reference+(r.opening_value?' Â· Opening basis '+amount(r.opening_value)+' '+r.opening_currency+' at '+r.opening_as_of:''),r.currency,money(r.amount)]){const td=document.createElement('td');td.textContent=value;tr.append(td)}const td=document.createElement('td'),select=document.createElement('select');select.add(new Option('Review needed',''));const choices=r.category==='transfer_review'?[['external_funding','External funding'],['asset_settlement','Trade expiry / settlement'],['trading_profit','Outside trading profit (no principal)']]:[['asset_settlement','Trading result'],['fx_hedge_settlement','FX hedge result']];for(const [value,label] of choices)select.add(new Option(label,value));select.value=r.decision||'';const button=document.createElement('button');button.textContent=r.decision?'Save change':'Confirm';button.addEventListener('click',async()=>{if(!select.value){el('cash-review-message').textContent='Choose the source-confirmed classification first.';return}button.disabled=true;try{const payload={id:r.id,classification:select.value,reason:'Owner confirmed in dashboard: '+select.options[select.selectedIndex].text};if(select.value==='asset_settlement'&&r.opening_value)Object.assign(payload,{opening_value:r.opening_value,opening_currency:r.opening_currency,opening_as_of:r.opening_as_of});const response=await fetch('/api/accounting/cash-review',{method:'POST',headers:{'Content-Type':'application/json','X-Accounting-Action':'manage'},body:JSON.stringify([payload])});const result=await response.json();if(!response.ok)throw Error(result.error||'Review could not be saved');el('cash-review-message').textContent='Decision saved; prior decisions remain in the audit history.';await refresh()}catch(error){el('cash-review-message').textContent=error.message;button.disabled=false}});td.append(select,' ',button);tr.append(td);el('desk-cash-review').append(tr)}}
+function renderDesk(){renderCashReview();for(const id of ['desk-currencies','desk-cash-pnl','desk-cash-checks','desk-issues','desk-risk','desk-risk-missing'])el(id).replaceChildren();const a=state.accounting;el('desk-status').textContent=a?.status||'UBS data needed';el('desk-date').textContent=a?.opening_as_of?a.opening_as_of+' â†’ '+a.as_of+' Â· Closing UBS valuation':'Import the prior year-end statement PDF and current UBS files.';el('desk-nav').textContent=money(a?.nav_czk);el('desk-ytd').textContent=money(a?.ytd_pnl_czk);el('desk-realized').textContent=Object.entries(a?.realized_totals||{}).filter(([,v])=>Number(v)!==0).map(([c,v])=>money(v)+' '+c).join(' / ')||'â€”';const period=a?.period;el('desk-period-label').textContent=(period?.label||'Daily / period P/L')+' Â· CZK';el('desk-period').textContent=money(period?.pnl_czk);el('desk-period-date').textContent=period?period.from+' â†’ '+period.to+' Â· '+period.status:'Needs an earlier closing snapshot';el('desk-basis').textContent=(a?.basis||'')+(a?.activity_confirmations?.length?' Owner-confirmed coverage: '+a.activity_confirmations.map(c=>c.currency+' '+c.from+' to '+c.until+' ('+(c.kind==='no_activity'?'no activity':'no further transactions')+')').join('; ')+'.':'');for(const c of a?.currencies||[]){numericRow(el('desk-currencies'),[c.currency,money(c.native_asset_pnl),money(c.asset_contribution_czk),money(c.currency_contribution_czk),money(c.total_pnl_czk)],[1,2,3,4]);numericRow(el('desk-cash-pnl'),[c.currency,money(c.futures_settlements_native),money(c.cash_deposit_income_costs_native),money(c.outside_trading_profit_native),money(c.fx_hedge_settlements_native),money(c.internal_fx_fixing_difference_czk)],[1,2,3,4])}for(const issue of a?.issues||[]){const li=document.createElement('li');li.textContent=issue;el('desk-issues').append(li)}for(const c of a?.cash_checks||[])numericRow(el('desk-cash-checks'),[c.description,c.currency,money(c.expected),money(c.reported),money(c.difference)],[2,3,4]);el('desk-pending').textContent=(a?.pending_settlements||[]).length+' unsettled transactions identified at the valuation cutoff.';renderDeskAssets();const risk=state.snapshot_risk;el('desk-risk-basis').textContent=risk?.basis||'';for(const p of risk?.rows||[])numericRow(el('desk-risk'),[p.description+' Â· '+p.expiry,p.currency,money('-'+p.maximum_premium_loss),money(p.expiry_pnl['-0.1']),money(p.expiry_pnl['0']),money(p.expiry_pnl['0.1'])],[2,3,4,5]);if(!risk?.rows.length)row(el('desk-risk'),['No supported option expiry scenarios available.']);for(const p of risk?.uncovered||[]){const li=document.createElement('li');li.textContent=p.description+': '+p.reason;el('desk-risk-missing').append(li)}}
 el('desk-position-filter').addEventListener('change',renderDeskAssets);
-function renderBloomberg(){el('bloomberg-quotes').replaceChildren();el('bridge-devices').replaceChildren();for(const q of state.bloomberg_data.quotes)row(el('bloomberg-quotes'),[q.security,amount(q.price),q.currency||'Unspecified',q.observed_at.replace('T',' '),q.age_seconds+'s',q.stale?'Stale / degraded':'Recently received']);if(!state.bloomberg_data.quotes.length)row(el('bloomberg-quotes'),['No Bloomberg quotes received yet.']);for(const device of state.bridge_tokens){const line=document.createElement('p');const text=document.createElement('span');text.textContent=device.name+' · '+device.id.substring(0,8)+' · expires '+device.expires_at.substring(0,10)+(device.revoked?' · revoked':'');line.append(text);if(!device.revoked){const button=document.createElement('button');button.textContent='Revoke';button.addEventListener('click',async()=>{button.disabled=true;try{const response=await fetch('/api/bridge/revoke',{method:'POST',headers:{'Content-Type':'application/json','X-Bridge-Action':'manage'},body:JSON.stringify({id:device.id})});if(!response.ok)throw Error('Revocation failed');await refresh()}catch(e){el('bridge-message').textContent=e.message;button.disabled=false}});line.append(' ',button)}el('bridge-devices').append(line)}}
-function renderAnalytics(){for(const id of ['currency-allocation','analytics-holdings','analytics-notes'])el(id).replaceChildren();const a=state.analytics;if(!a){for(const id of ['indicative-value','valuation-change','snapshot-pnl'])el(id).textContent='—';el('analytics-date').textContent='Import a positions snapshot to calculate analytics.';el('analytics-coverage').textContent='';return}const money=v=>amount(v)+' '+a.valuation_currency;el('analytics-date').textContent='Holdings as of '+a.as_of+' · estimates, not live holdings';el('indicative-value').textContent=money(a.indicative_market_value);el('valuation-change').textContent=money(a.valuation_change);el('snapshot-pnl').textContent=a.snapshot_unrealized_pnl===null?'Unavailable':money(a.snapshot_unrealized_pnl);el('analytics-coverage').textContent=a.recent_price_count+' / '+a.position_count+' holdings use recent equity prices; '+a.recent_fx_count+' use recent FX. Cost coverage: '+a.cost_covered_count+' holdings ('+money(a.cost_covered_value)+' market value). These indicative prices are separate from closing UBS accounting above.';for(const note of a.limitations){const li=document.createElement('li');li.textContent=note;el('analytics-notes').append(li)}for(const c of a.currencies)row(el('currency-allocation'),[c.currency,money(c.market_value),money(c.gross_value),c.weight_percent===null?'—':amount(c.weight_percent)+'%',amount(c.cash_balance),amount(c.deposit_balance)]);for(const p of a.positions)row(el('analytics-holdings'),[p.description,money(p.broker_value),money(p.indicative_value),money(p.valuation_change),p.snapshot_unrealized_pnl===null?'—':money(p.snapshot_unrealized_pnl),p.price_observed_at||'UBS snapshot',p.fx_observed_at||'UBS snapshot / base currency',p.notes.join('; ')])}
-function renderActivity(){for(const id of ['activity-accounts','activity-review','activity-ledger','activity-warnings'])el(id).replaceChildren();const a=state.activity;if(!a){el('activity-summary').textContent='No account transaction files imported.';el('activity-fx').textContent='';return}el('activity-summary').textContent=a.record_count+' unique postings · '+a.export_count+' exports retained · '+(state.accounting?.status||'Opening statement needed');for(const account of a.accounts){const match=account.snapshot_match;let comparison=match.status+(match.snapshot_as_of?' · '+match.snapshot_as_of:'');if(match.matches_booked_after_excluding_later_bookings&&match.excluded_later_booking_amount!=='0')comparison+='; booked balance matches after excluding '+amount(match.excluded_later_booking_amount)+' booked later';if(account.booked_beyond_filter_count)comparison+='; includes '+account.booked_beyond_filter_count+' later booking';row(el('activity-accounts'),[account.account_number+' / '+account.currency,account.from+' → '+account.until,account.balance_chain,amount(account.closing_balance),comparison])}const matched=a.fx_pairs.filter(p=>p.status==='Matched internal currency legs').length;el('activity-fx').textContent=matched+' / '+a.fx_pairs.length+' FX transactions have matched currency legs · '+(a.categories.futures_margin||0)+' futures margin postings · '+a.review.length+' transfers / settlements to review';for(const r of a.review)row(el('activity-review'),[r.booking_date,r.currency,amount(r.amount),r.classification,r.reason]);for(const r of a.ledger)row(el('activity-ledger'),[r.trade_date,r.booking_date+' / '+r.value_date,r.event_type+' · '+r.description,r.isin||(r.valor?'Valor '+r.valor:'—'),amount(r.quantity)+(r.quantity_currency?' '+r.quantity_currency:'')+' / '+amount(r.price)+(r.price_convention==='percent'?'%':r.price_currency?' '+r.price_currency:''),r.currency,amount(r.amount),r.transaction_no]);for(const warning of a.warnings){const li=document.createElement('li');li.textContent=warning;el('activity-warnings').append(li)}}
-function renderPerformance(){const p=state.performance;for(const id of ['performance-totals','daily-pnl','realized-pnl','performance-warnings'])el(id).replaceChildren();el('performance-basis').textContent=p.event_count+' imported events through '+p.as_of+'. '+p.basis;for(const [c,t] of Object.entries(p.totals))row(el('performance-totals'),[c,amount(t.realized),amount(t.ytd_realized),amount(t.ytd_income)]);if(!Object.keys(p.totals).length)row(el('performance-totals'),['Unavailable · import dated records with opening inventory.']);for(const r of [...p.periods].reverse())row(el('daily-pnl'),[r.account,r.from,r.to,r.currency,r.kind+' · '+r.days+' days',amount(r.external_flows),amount(r.amount)]);if(!p.periods.length)row(el('daily-pnl'),['Unavailable · two complete closing valuations required.']);for(const r of [...p.realized].reverse())row(el('realized-pnl'),[r.date,r.account,r.description||r.security,amount(r.quantity),r.currency,amount(r.amount)]);for(const warning of p.warnings){const li=document.createElement('li');li.textContent=warning;el('performance-warnings').append(li)}}
-function renderRisk(){const r=state.risk;for(const id of ['risk-rows','risk-totals','risk-missing','risk-identifiers'])el(id).replaceChildren();el('risk-basis').textContent=r.basis||'Import holdings and verified terms.';for(const p of r.rows)row(el('risk-rows'),[p.description+' / '+p.underlying,p.currency,p.status+' · '+p.age_seconds+'s',amount(p.delta_cash),amount(p.gamma_1pct),amount(p.vega_1pp),amount(p.theta_1day),amount(p.scenarios?.['spot_-10pct']),amount(p.scenarios?.['spot_+10pct']),amount(p.scenarios?.['vol_+5pp'])]);for(const [c,t] of Object.entries(r.totals))row(el('risk-totals'),[c,amount(t.delta_cash),amount(t.gamma_1pct),amount(t.vega_1pp),amount(t.theta_1day),amount(t['spot_-10pct']),amount(t['spot_+10pct'])]);if(!Object.keys(r.totals).length)row(el('risk-totals'),['Unavailable · no recent supported risk inputs.']);for(const p of r.uncovered){const li=document.createElement('li');li.textContent=p.description+': '+p.reason;el('risk-missing').append(li)}for(const p of state.positions.filter(p=>p.kind==='security'))row(el('risk-identifiers'),[p.description,p.id,amount(p.quantity_or_balance),p.currency])}
+function renderBloomberg(){el('bloomberg-quotes').replaceChildren();el('bridge-devices').replaceChildren();for(const q of state.bloomberg_data.quotes)row(el('bloomberg-quotes'),[q.security,amount(q.price),q.currency||'Unspecified',q.observed_at.replace('T',' '),q.age_seconds+'s',q.stale?'Stale / degraded':'Recently received']);if(!state.bloomberg_data.quotes.length)row(el('bloomberg-quotes'),['No Bloomberg quotes received yet.']);for(const device of state.bridge_tokens){const line=document.createElement('p');const text=document.createElement('span');text.textContent=device.name+' Â· '+device.id.substring(0,8)+' Â· expires '+device.expires_at.substring(0,10)+(device.revoked?' Â· revoked':'');line.append(text);if(!device.revoked){const button=document.createElement('button');button.textContent='Revoke';button.addEventListener('click',async()=>{button.disabled=true;try{const response=await fetch('/api/bridge/revoke',{method:'POST',headers:{'Content-Type':'application/json','X-Bridge-Action':'manage'},body:JSON.stringify({id:device.id})});if(!response.ok)throw Error('Revocation failed');await refresh()}catch(e){el('bridge-message').textContent=e.message;button.disabled=false}});line.append(' ',button)}el('bridge-devices').append(line)}}
+function renderAnalytics(){for(const id of ['currency-allocation','analytics-holdings','analytics-notes'])el(id).replaceChildren();const a=state.analytics;if(!a){for(const id of ['indicative-value','valuation-change','snapshot-pnl'])el(id).textContent='â€”';el('analytics-date').textContent='Import a positions snapshot to calculate analytics.';el('analytics-coverage').textContent='';return}const money=v=>amount(v)+' '+a.valuation_currency;el('analytics-date').textContent='Holdings as of '+a.as_of+' Â· estimates, not live holdings';el('indicative-value').textContent=money(a.indicative_market_value);el('valuation-change').textContent=money(a.valuation_change);el('snapshot-pnl').textContent=a.snapshot_unrealized_pnl===null?'Unavailable':money(a.snapshot_unrealized_pnl);el('analytics-coverage').textContent=a.recent_price_count+' / '+a.position_count+' holdings use recent equity prices; '+a.recent_fx_count+' use recent FX. Cost coverage: '+a.cost_covered_count+' holdings ('+money(a.cost_covered_value)+' market value). These indicative prices are separate from closing UBS accounting above.';for(const note of a.limitations){const li=document.createElement('li');li.textContent=note;el('analytics-notes').append(li)}for(const c of a.currencies)row(el('currency-allocation'),[c.currency,money(c.market_value),money(c.gross_value),c.weight_percent===null?'â€”':amount(c.weight_percent)+'%',amount(c.cash_balance),amount(c.deposit_balance)]);for(const p of a.positions)row(el('analytics-holdings'),[p.description,money(p.broker_value),money(p.indicative_value),money(p.valuation_change),p.snapshot_unrealized_pnl===null?'â€”':money(p.snapshot_unrealized_pnl),p.price_observed_at||'UBS snapshot',p.fx_observed_at||'UBS snapshot / base currency',p.notes.join('; ')])}
+function renderActivity(){for(const id of ['activity-accounts','activity-review','activity-ledger','activity-warnings'])el(id).replaceChildren();const a=state.activity;if(!a){el('activity-summary').textContent='No account transaction files imported.';el('activity-fx').textContent='';return}el('activity-summary').textContent=a.record_count+' unique postings Â· '+a.export_count+' exports retained Â· '+(state.accounting?.status||'Opening statement needed');for(const account of a.accounts){const match=account.snapshot_match;let comparison=match.status+(match.snapshot_as_of?' Â· '+match.snapshot_as_of:'');if(match.matches_booked_after_excluding_later_bookings&&match.excluded_later_booking_amount!=='0')comparison+='; booked balance matches after excluding '+amount(match.excluded_later_booking_amount)+' booked later';if(account.booked_beyond_filter_count)comparison+='; includes '+account.booked_beyond_filter_count+' later booking';row(el('activity-accounts'),[account.account_number+' / '+account.currency,account.from+' â†’ '+account.until,account.balance_chain,amount(account.closing_balance),comparison])}const matched=a.fx_pairs.filter(p=>p.status==='Matched internal currency legs').length;el('activity-fx').textContent=matched+' / '+a.fx_pairs.length+' FX transactions have matched currency legs Â· '+(a.categories.futures_margin||0)+' futures margin postings Â· '+a.review.length+' transfers / settlements to review';for(const r of a.review)row(el('activity-review'),[r.booking_date,r.currency,amount(r.amount),r.classification,r.reason]);for(const r of a.ledger)row(el('activity-ledger'),[r.trade_date,r.booking_date+' / '+r.value_date,r.event_type+' Â· '+r.description,r.isin||(r.valor?'Valor '+r.valor:'â€”'),amount(r.quantity)+(r.quantity_currency?' '+r.quantity_currency:'')+' / '+amount(r.price)+(r.price_convention==='percent'?'%':r.price_currency?' '+r.price_currency:''),r.currency,amount(r.amount),r.transaction_no]);for(const warning of a.warnings){const li=document.createElement('li');li.textContent=warning;el('activity-warnings').append(li)}}
+function renderPerformance(){const p=state.performance;for(const id of ['performance-totals','daily-pnl','realized-pnl','performance-warnings'])el(id).replaceChildren();el('performance-basis').textContent=p.event_count+' imported events through '+p.as_of+'. '+p.basis;for(const [c,t] of Object.entries(p.totals))row(el('performance-totals'),[c,amount(t.realized),amount(t.ytd_realized),amount(t.ytd_income)]);if(!Object.keys(p.totals).length)row(el('performance-totals'),['Unavailable Â· import dated records with opening inventory.']);for(const r of [...p.periods].reverse())row(el('daily-pnl'),[r.account,r.from,r.to,r.currency,r.kind+' Â· '+r.days+' days',amount(r.external_flows),amount(r.amount)]);if(!p.periods.length)row(el('daily-pnl'),['Unavailable Â· two complete closing valuations required.']);for(const r of [...p.realized].reverse())row(el('realized-pnl'),[r.date,r.account,r.description||r.security,amount(r.quantity),r.currency,amount(r.amount)]);for(const warning of p.warnings){const li=document.createElement('li');li.textContent=warning;el('performance-warnings').append(li)}}
+function renderRisk(){const r=state.risk;for(const id of ['risk-rows','risk-totals','risk-missing','risk-identifiers'])el(id).replaceChildren();el('risk-basis').textContent=r.basis||'Import holdings and verified terms.';for(const p of r.rows)row(el('risk-rows'),[p.description+' / '+p.underlying,p.currency,p.status+' Â· '+p.age_seconds+'s',amount(p.delta_cash),amount(p.gamma_1pct),amount(p.vega_1pp),amount(p.theta_1day),amount(p.scenarios?.['spot_-10pct']),amount(p.scenarios?.['spot_+10pct']),amount(p.scenarios?.['vol_+5pp'])]);for(const [c,t] of Object.entries(r.totals))row(el('risk-totals'),[c,amount(t.delta_cash),amount(t.gamma_1pct),amount(t.vega_1pp),amount(t.theta_1day),amount(t['spot_-10pct']),amount(t['spot_+10pct'])]);if(!Object.keys(r.totals).length)row(el('risk-totals'),['Unavailable Â· no recent supported risk inputs.']);for(const p of r.uncovered){const li=document.createElement('li');li.textContent=p.description+': '+p.reason;el('risk-missing').append(li)}for(const p of state.positions.filter(p=>p.kind==='security'))row(el('risk-identifiers'),[p.description,p.id,amount(p.quantity_or_balance),p.currency])}
 function registerDeskUpload(kind){el(kind+'-upload').addEventListener('submit',async event=>{event.preventDefault();const file=el(kind+'-file').files[0];if(!file)return;if(file.size>2*1024*1024){el(kind+'-message').textContent='File exceeds 2 MiB.';return}el(kind+'-import').disabled=true;try{const text=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());const response=await fetch('/api/import/'+kind,{method:'POST',headers:{'Content-Type':'text/csv','X-Import-Format':'desk-'+kind},body:text});const result=await response.json();if(!response.ok)throw Error(result.error||'Import failed');el(kind+'-message').textContent=kind==='performance'?result.added+' new events; '+result.existing+' already stored.':result.count+' risk inputs retained.';await refresh()}catch(e){el(kind+'-message').textContent=e.message}finally{el(kind+'-import').disabled=false}})}
 for(const [id,path] of [['report-print','/reports/trader'],['report-html','/api/reports/trader.html'],['report-csv','/api/reports/trader.csv']])el(id).addEventListener('click',()=>{const params=new URLSearchParams({size_currency:el('report-size').value.toUpperCase(),pnl_currency:el('report-pnl').value.toUpperCase()});if(historicalState?.requested_as_of&&el('report-source').value==='ubs')params.set('as_of',historicalState.requested_as_of);const url=el('report-source').value==='mars'?path.replace('trader','mars'):path+'?'+params;if(id==='report-print')window.open(url,'_blank','noopener');else{const a=document.createElement('a');a.href=url;document.body.append(a);a.click();a.remove()}});
 registerDeskUpload('performance');registerDeskUpload('risk');
-function renderMars(){for(const id of ['mars-positions','mars-warnings'])el(id).replaceChildren();const m=state.mars;if(!m){el('mars-summary').textContent='No MARS snapshot imported.';return}el('mars-summary').textContent=m.portfolio+' · '+m.count+' instruments · valued '+(m.as_of||'Unconfirmed')+' · report currency setting '+(m.portfolio_currency||'Unconfirmed')+' · P/L period setting '+(m.pnl_period||'Unconfirmed');for(const warning of m.warnings){const li=document.createElement('li');li.textContent=warning;el('mars-warnings').append(li)}for(const p of m.instruments){const f=p.fields;const q=p.quote;row(el('mars-positions'),[p.group+' / '+p.ticker,f.Position,amount(f.Notional),amount(f.MktPx)+' / '+amount(f.CostPx),amount(f.Strike),f['Trade Date']||'—',(f['Expiry Date']||'—')+' / '+(f['Delivery Date']||'—'),f.Underlying||'—',q?amount(q.price)+' '+(q.currency||'Unspecified')+' / '+(q.isin||'No ISIN')+' · '+(q.stale?'Stale':'Recently received')+' · '+q.observed_at:'Awaiting independent quote'])}}
+function renderMars(){for(const id of ['mars-positions','mars-warnings'])el(id).replaceChildren();const m=state.mars;if(!m){el('mars-summary').textContent='No MARS snapshot imported.';return}el('mars-summary').textContent=m.portfolio+' Â· '+m.count+' instruments Â· valued '+(m.as_of||'Unconfirmed')+' Â· report currency setting '+(m.portfolio_currency||'Unconfirmed')+' Â· P/L period setting '+(m.pnl_period||'Unconfirmed');for(const warning of m.warnings){const li=document.createElement('li');li.textContent=warning;el('mars-warnings').append(li)}for(const p of m.instruments){const f=p.fields;const q=p.quote;row(el('mars-positions'),[p.group+' / '+p.ticker,f.Position,amount(f.Notional),amount(f.MktPx)+' / '+amount(f.CostPx),amount(f.Strike),f['Trade Date']||'â€”',(f['Expiry Date']||'â€”')+' / '+(f['Delivery Date']||'â€”'),f.Underlying||'â€”',q?amount(q.price)+' '+(q.currency||'Unspecified')+' / '+(q.isin||'No ISIN')+' Â· '+(q.stale?'Stale':'Recently received')+' Â· '+q.observed_at:'Awaiting independent quote'])}}
 el('mars-date').value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 el('mars-upload').addEventListener('submit',async event=>{event.preventDefault();const file=el('mars-file').files[0];if(!file)return;if(file.size>2*1024*1024){el('mars-message').textContent='File exceeds 2 MiB.';return}el('mars-import').disabled=true;try{const response=await fetch('/api/import/mars',{method:'POST',headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','X-Import-Format':'bloomberg-mars','X-Mars-Metadata':JSON.stringify({as_of:el('mars-date').value,portfolio_currency:el('mars-currency').value.toUpperCase(),pnl_period:el('mars-period').value})},body:await file.arrayBuffer()});const result=await response.json();if(!response.ok)throw Error(result.error||'MARS import failed');el('mars-message').textContent=(result.already_imported?'Already retained: ':'Imported: ')+result.count+' instruments in '+result.portfolio+'.';await refresh();el('report-source').value='mars';updateReportControls()}catch(e){el('mars-message').textContent=e.message}finally{el('mars-import').disabled=false}});
 function updateReportControls(){const mars=el('report-source').value==='mars';el('report-size').disabled=mars;el('report-pnl').disabled=mars}
 el('report-source').addEventListener('change',updateReportControls);
-function renderOrders(){el('trades').replaceChildren();el('order-reviews').replaceChildren();el('trade-count').textContent=state.trades.length+' completed order summaries';for(const t of state.trades){row(el('trades'),[(t.order_entered_at||'—').replace('T',' '),(t.instrument_name||t.security)+' / '+t.security,t.side,amount(t.quantity),amount(t.price),t.currency,t.account,t.external_id,'Order execution summary'])}if(!state.trades.length)row(el('trades'),['No order summaries imported.']);for(const report of state.order_imports){const notes=[...report.review,...report.errors].map(item=>[item.order,item.state,item.reason].filter(Boolean).join(' · ')).join('; ');row(el('order-reviews'),[report.imported_at.replace('T',' '),report.accepted?'Accepted':'Rejected · no changes',report.added,report.existing,notes||'No review items'])}if(!state.order_imports.length)row(el('order-reviews'),['No order imports yet.'])}
-function renderHoldings(){el('holdings').replaceChildren();const group=el('filter').value;for(const p of state.positions.filter(p=>!group||p.group===group)){const price=p.market_price?amount(p.market_price.value)+(p.market_price.convention==='percent'?'%':''): '—';row(el('holdings'),[p.description,p.isin|| (p.valor?'Valor '+p.valor:'—'),p.currency,amount(p.quantity_or_balance),price,amount(p.market_value),p.unrealized_pnl_percent===null?'—':amount(p.unrealized_pnl_percent)+'%'])}}
-async function refresh(){try{const r=await fetch('/api/status');if(!r.ok)throw Error('Status unavailable');state=await r.json();el('bbg').textContent=state.bloomberg;el('ubs').textContent=state.ubs;el('error').textContent='';const s=state.snapshot;el('cash').replaceChildren();el('warnings').replaceChildren();if(s){if(!el('history-date').value)el('history-date').value=s.as_of;el('valuation').textContent='Valued '+s.as_of+' · Exported '+s.exported_at.replace('T',' ')+' (timezone unspecified) · '+s.valuation_currency+' · Not live';el('value').textContent=amount(s.summary.market_value)+' '+s.valuation_currency;el('accrued').textContent=amount(s.summary.accrued_interest)+' '+s.valuation_currency;el('count').textContent=s.count;for(const warning of s.warnings){const li=document.createElement('li');li.textContent=warning;el('warnings').append(li)}for(const p of state.positions.filter(p=>p.kind==='cash_account'))row(el('cash'),[p.currency,amount(p.quantity_or_balance),amount(p.intraday_quantity_or_balance)]);for(const item of document.querySelectorAll('.base'))item.textContent='('+s.valuation_currency+')'}const selected=el('filter').value;el('filter').replaceChildren(new Option('All groups',''));for(const group of [...new Set(state.positions.map(p=>p.group))])el('filter').add(new Option(group,group));el('filter').value=selected;renderEstimate();renderExternal();renderDesk();renderHoldings();renderOrders();renderBloomberg();renderAnalytics();renderPerformance();renderActivity();renderRisk();renderMars();if(historicalState?.requested_as_of===el('history-date').value)await loadHistorical()}catch(e){el('error').textContent='Cannot load dashboard data. Check the local service.';el('estimate-status').textContent='Connection lost — current estimate unavailable';for(const id of ['estimate-ytd','estimate-nav','estimate-change'])el(id).textContent='—'}}
+function renderOrders(){el('trades').replaceChildren();el('order-reviews').replaceChildren();el('trade-count').textContent=state.trades.length+' completed order summaries';for(const t of state.trades){row(el('trades'),[(t.order_entered_at||'â€”').replace('T',' '),(t.instrument_name||t.security)+' / '+t.security,t.side,amount(t.quantity),amount(t.price),t.currency,t.account,t.external_id,'Order execution summary'])}if(!state.trades.length)row(el('trades'),['No order summaries imported.']);for(const report of state.order_imports){const notes=[...report.review,...report.errors].map(item=>[item.order,item.state,item.reason].filter(Boolean).join(' Â· ')).join('; ');row(el('order-reviews'),[report.imported_at.replace('T',' '),report.accepted?'Accepted':'Rejected Â· no changes',report.added,report.existing,notes||'No review items'])}if(!state.order_imports.length)row(el('order-reviews'),['No order imports yet.'])}
+function renderHoldings(){el('holdings').replaceChildren();const group=el('filter').value;for(const p of state.positions.filter(p=>!group||p.group===group)){const price=p.market_price?amount(p.market_price.value)+(p.market_price.convention==='percent'?'%':''): 'â€”';row(el('holdings'),[p.description,p.isin|| (p.valor?'Valor '+p.valor:'â€”'),p.currency,amount(p.quantity_or_balance),price,amount(p.market_value),p.unrealized_pnl_percent===null?'â€”':amount(p.unrealized_pnl_percent)+'%'])}}
+async function refresh(){try{const r=await fetch('/api/status');if(!r.ok)throw Error('Status unavailable');state=await r.json();el('bbg').textContent=state.bloomberg;el('ubs').textContent=state.ubs;el('error').textContent='';const s=state.snapshot;el('cash').replaceChildren();el('warnings').replaceChildren();if(s){if(!el('history-date').value)el('history-date').value=s.as_of;el('valuation').textContent='Valued '+s.as_of+' Â· Exported '+s.exported_at.replace('T',' ')+' (timezone unspecified) Â· '+s.valuation_currency+' Â· Not live';el('value').textContent=amount(s.summary.market_value)+' '+s.valuation_currency;el('accrued').textContent=amount(s.summary.accrued_interest)+' '+s.valuation_currency;el('count').textContent=s.count;for(const warning of s.warnings){const li=document.createElement('li');li.textContent=warning;el('warnings').append(li)}for(const p of state.positions.filter(p=>p.kind==='cash_account'))row(el('cash'),[p.currency,amount(p.quantity_or_balance),amount(p.intraday_quantity_or_balance)]);for(const item of document.querySelectorAll('.base'))item.textContent='('+s.valuation_currency+')'}const selected=el('filter').value;el('filter').replaceChildren(new Option('All groups',''));for(const group of [...new Set(state.positions.map(p=>p.group))])el('filter').add(new Option(group,group));el('filter').value=selected;renderEstimate();renderExternal();renderDesk();renderHoldings();renderOrders();renderBloomberg();renderAnalytics();renderPerformance();renderActivity();renderRisk();renderMars();if(historicalState?.requested_as_of===el('history-date').value)await loadHistorical()}catch(e){el('error').textContent='Cannot load dashboard data. Check the local service.';el('estimate-status').textContent='Connection lost â€” current estimate unavailable';for(const id of ['estimate-ytd','estimate-nav','estimate-change'])el(id).textContent='â€”'}}
 el('filter').addEventListener('change',renderHoldings);
 function registerUpload(formId,fileId,buttonId,messageId,kind){el(formId).addEventListener('submit',async event=>{event.preventDefault();const file=el(fileId).files[0];if(!file)return;if(file.size>2*1024*1024){el(messageId).textContent='File exceeds 2 MiB.';return}el(buttonId).disabled=true;try{const bytes=await file.arrayBuffer();let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch(e){text=new TextDecoder('windows-1252').decode(bytes)}const response=await fetch('/api/import/'+kind,{method:'POST',headers:{'Content-Type':'text/csv','X-Import-Format':'ubs-'+kind},body:text});const result=await response.json();if(!response.ok){await refresh();throw Error(result.error||result.errors?.map(item=>[item.order,item.reason].filter(Boolean).join(': ')).join('; ')||'Import failed')}el(messageId).textContent=kind==='positions'?(result.already_imported?'Already retained':'Imported')+': '+result.count+' positions, valued '+result.as_of+'.':(result.already_imported?'Previously imported. ':'')+result.added+' new summaries, '+result.existing+' already stored, '+result.review.length+' review items.';await refresh()}catch(e){el(messageId).textContent=e.message}finally{el(buttonId).disabled=false}})}
 el('create-bridge').addEventListener('click',async()=>{el('create-bridge').disabled=true;try{const response=await fetch('/api/bridge/token',{method:'POST',headers:{'Content-Type':'application/json','X-Bridge-Action':'manage'},body:JSON.stringify({name:'Windows Terminal'})});const result=await response.json();if(!response.ok)throw Error(result.error||'Device creation failed');const blob=new Blob([JSON.stringify(result.config,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='bbg-bridge-config.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);el('bridge-message').textContent='Private configuration downloaded. Keep it beside the worker. Expires '+result.expires_at.substring(0,10)+'. If the download failed, revoke this device and create another.';await refresh()}catch(e){el('bridge-message').textContent=e.message}finally{el('create-bridge').disabled=false}});
-el('upload').addEventListener('submit',async event=>{event.preventDefault();const files=[...el('file').files];if(!files.length)return;el('import').disabled=true;try{if(files.length>12||files.some(f=>f.size>(f.name.toLowerCase().endsWith('.pdf')?4:2)*1024*1024)||files.reduce((n,f)=>n+f.size,0)>6*1024*1024)throw Error('Select up to 12 files: CSVs under 2 MiB, PDF under 4 MiB, selection under 6 MiB.');const contents=[];for(const file of files){const bytes=await file.arrayBuffer();if(file.name.toLowerCase().endsWith('.pdf')){const data=new Uint8Array(bytes);let binary='';for(let i=0;i<data.length;i+=32768)binary+=String.fromCharCode(...data.subarray(i,i+32768));contents.push({pdf_base64:btoa(binary)});continue}let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch(e){text=new TextDecoder('windows-1252').decode(bytes)}contents.push(text)}const response=await fetch('/api/import/ubs',{method:'POST',headers:{'Content-Type':'application/json','X-Import-Format':'ubs-batch'},body:JSON.stringify({files:contents})});const result=await response.json();if(!response.ok)throw Error(result.error||'Import failed');el('upload-files').replaceChildren();for(let i=0;i<result.files.length;i++){const r=result.files[i],li=document.createElement('li');li.textContent=files[i].name+': '+(r.format==='baseline'?r.count+' opening positions as of '+r.as_of:r.format==='positions'?r.count+' positions as of '+r.as_of:r.added+' new '+r.currency+' postings, '+r.existing+' already stored; '+r.from+' to '+r.until+'; cash reconciled');el('upload-files').append(li)}const opening=result.files.find(r=>r.format==='baseline'),closing=result.files.find(r=>r.format==='positions'),cash=result.files.filter(r=>r.format==='activity');el('upload-status').textContent=[opening?opening.count+' opening positions':null,closing?closing.count+' closing positions · '+closing.as_of:null,cash.length?cash.reduce((n,r)=>n+r.added,0)+' new cash postings, '+cash.reduce((n,r)=>n+r.existing,0)+' already stored':null].filter(Boolean).join(' · ')+'. Review the portfolio checks below.';await refresh()}catch(e){el('upload-status').textContent=e.message}finally{el('import').disabled=false}});
-el('external-upload').addEventListener('submit',async event=>{event.preventDefault();const file=el('external-file').files[0];if(!file)return;el('external-import').disabled=true;try{if(file.size>2*1024*1024)throw Error('CSV exceeds 2 MiB.');let text;const bytes=await file.arrayBuffer();try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch(e){text=new TextDecoder('windows-1252').decode(bytes)}const response=await fetch('/api/import/external-positions',{method:'POST',headers:{'Content-Type':'text/csv','X-Import-Format':'other-bank-positions'},body:text});const result=await response.json();if(!response.ok)throw Error(result.error||'Import failed');el('external-message').textContent=(result.already_imported?'Already retained: ':'Imported: ')+result.count+' positions for '+result.institution+' · '+result.portfolio+' as of '+result.as_of+'.';await refresh()}catch(e){el('external-message').textContent=e.message}finally{el('external-import').disabled=false}});
+el('upload').addEventListener('submit',async event=>{event.preventDefault();const files=[...el('file').files];if(!files.length)return;el('import').disabled=true;try{if(files.length>12||files.some(f=>f.size>(f.name.toLowerCase().endsWith('.pdf')?4:2)*1024*1024)||files.reduce((n,f)=>n+f.size,0)>6*1024*1024)throw Error('Select up to 12 files: CSVs under 2 MiB, PDF under 4 MiB, selection under 6 MiB.');const contents=[];for(const file of files){const bytes=await file.arrayBuffer();if(file.name.toLowerCase().endsWith('.pdf')){const data=new Uint8Array(bytes);let binary='';for(let i=0;i<data.length;i+=32768)binary+=String.fromCharCode(...data.subarray(i,i+32768));contents.push({pdf_base64:btoa(binary)});continue}let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch(e){text=new TextDecoder('windows-1252').decode(bytes)}contents.push(text)}const response=await fetch('/api/import/ubs',{method:'POST',headers:{'Content-Type':'application/json','X-Import-Format':'ubs-batch'},body:JSON.stringify({files:contents})});const result=await response.json();if(!response.ok)throw Error(result.error||'Import failed');el('upload-files').replaceChildren();for(let i=0;i<result.files.length;i++){const r=result.files[i],li=document.createElement('li');li.textContent=files[i].name+': '+(r.format==='baseline'?r.count+' opening positions as of '+r.as_of:r.format==='positions'?r.count+' positions as of '+r.as_of:r.added+' new '+r.currency+' postings, '+r.existing+' already stored; '+r.from+' to '+r.until+'; cash reconciled');el('upload-files').append(li)}const opening=result.files.find(r=>r.format==='baseline'),closing=result.files.find(r=>r.format==='positions'),cash=result.files.filter(r=>r.format==='activity');el('upload-status').textContent=[opening?opening.count+' opening positions':null,closing?closing.count+' closing positions Â· '+closing.as_of:null,cash.length?cash.reduce((n,r)=>n+r.added,0)+' new cash postings, '+cash.reduce((n,r)=>n+r.existing,0)+' already stored':null].filter(Boolean).join(' Â· ')+'. Review the portfolio checks below.';await refresh()}catch(e){el('upload-status').textContent=e.message}finally{el('import').disabled=false}});
+el('external-upload').addEventListener('submit',async event=>{event.preventDefault();const file=el('external-file').files[0];if(!file)return;el('external-import').disabled=true;try{if(file.size>2*1024*1024)throw Error('CSV exceeds 2 MiB.');let text;const bytes=await file.arrayBuffer();try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch(e){text=new TextDecoder('windows-1252').decode(bytes)}const response=await fetch('/api/import/external-positions',{method:'POST',headers:{'Content-Type':'text/csv','X-Import-Format':'other-bank-positions'},body:text});const result=await response.json();if(!response.ok)throw Error(result.error||'Import failed');el('external-message').textContent=(result.already_imported?'Already retained: ':'Imported: ')+result.count+' positions for '+result.institution+' Â· '+result.portfolio+' as of '+result.as_of+'.';await refresh()}catch(e){el('external-message').textContent=e.message}finally{el('external-import').disabled=false}});
 registerUpload('orders-upload','orders-file','orders-import','orders-upload-status','orders');
 refresh();setInterval(refresh,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
