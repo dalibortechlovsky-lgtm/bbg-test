@@ -27,7 +27,7 @@ def native_positions(path, day):
         days=max(0,(date.fromisoformat(day)-date.fromisoformat(r['interest_start'])).days+1)
         interest=D(r['principal'])*D(r['annual_rate'])*D(days)/D(365)
         rows.append(dict(key=r['id'],kind='external_deposit',group='External bank deposits',
-            description=r['bank']+' deposit Â· estimated interest',isin=None,valor=None,product=r['id'],
+            description=r['bank']+' deposit · estimated interest',isin=None,valor=None,product=r['id'],
             currency=r['currency'],quantity=r['principal'],price='1',price_convention='amount',scale='1',
             accrued_native=str(interest),market_value_native=r['principal'],missing=[],
             review_required=[r['bank']+': interest estimated using simple ACT/365, including selected day; retained in the same account. Bank credit dates, compounding and tax are not verified.']))
