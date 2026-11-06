@@ -8,6 +8,7 @@ from decimal import Decimal as D
 
 from .accounting import closing_positions, matched_reversals, signed_quantity, source_key, is_future
 from .report import fx_rate
+from .fee_breakdown import fee_breakdown
 
 ZERO = D(0)
 
@@ -142,6 +143,9 @@ def calculate_trades(snapshot, baseline, activity, accounting, decisions=None, l
         if p['value'] is None: issues.append('Missing non-security balance: '+p['description'])
         elif fx is not None: nonsecurity += p['value']*fx
     totals['other_balances_czk'] = nonsecurity-(opening_at_close-opening_securities)+totals['principal_czk']+totals['transferred_czk']-cash_movement
+    external_interest=sum((D(p['interest_czk']) for p in (accounting or {}).get('external_deposits',[])),ZERO)
+    totals['other_balances_czk']-=external_interest
+    totals['income_czk']+=external_interest
     required = ('opening_nav_czk','net_external_flows_czk')
     if all(bridge.get(k) is not None for k in required):
         totals['portfolio_fx_czk'] = opening_at_close-D(bridge['opening_nav_czk'])+totals['fx_cash_czk']+totals['external_at_close_czk']-D(bridge['net_external_flows_czk'])
@@ -156,6 +160,8 @@ def calculate_trades(snapshot, baseline, activity, accounting, decisions=None, l
     if difference is not None and abs(difference)>D('0.01'): issues.append('Trade totals do not reconcile to NAV')
     available = not issues and target is not None
     return dict(as_of=cutoff, positions=rows, components={k:str(v) for k,v in totals.items()},
+                external_deposits=(accounting or {}).get('external_deposits',[]),
+                fee_breakdown=fee_breakdown(snapshot, baseline, activity),
                 open_security_pnl_czk=str(open_pnl), closed_security_pnl_czk=str(closed_pnl),
                 open_subtotal_czk=str(open_total) if available else None,
                 closed_subtotal_czk=str(closed_total) if available else None,
