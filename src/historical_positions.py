@@ -246,14 +246,14 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
         scale=D(term['unit_scale']) if term.get('unit_scale') is not None else _scale(source,base)
         if scale is None:
             scale=_activity_scale(key,records)
-            if scale is not None:reviews.append(key+f': Review required — contract multiplier {scale} inferred from UBS net settlements.')
+            if scale is not None:reviews.append(key+f': Review required â€” contract multiplier {scale} inferred from UBS net settlements.')
         bond=scale==D('0.01');absent=[]
         price=observation['price'] if observation else None
         if observation and observation.get('currency') not in (None,currency):price=None
         if price is None:
             price,reason=(None,None) if strict_market else _price_proxy(key,requested,opening,source,records)
             if price is None:absent.append('Bloomberg PX_LAST')
-            else:reviews.append(key+': Review required — '+reason)
+            else:reviews.append(key+': Review required â€” '+reason)
         if not security:
             reviews.append(key+': Bloomberg identifier mapping missing.')
         if scale is None:absent.append('verified contract multiplier')
@@ -261,9 +261,9 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
         if bond and accrued is None:
             accrued,reason=_accrued_proxy(key,requested,opening,source,quantity)
             if accrued is None:absent.append('Bloomberg accrued interest')
-            elif reason:reviews.append(key+': Review required — '+reason)
+            elif reason:reviews.append(key+': Review required â€” '+reason)
         if term.get('review_required'):
-            reviews.append(key+': Review required — '+term['basis'])
+            reviews.append(key+': Review required â€” '+term['basis'])
         if absent:missing.append(key+': '+', '.join(absent))
         native=quantity*price*scale if price is not None and scale is not None else None
         accrued_native=quantity*accrued*D('0.01') if bond and accrued is not None else ZERO if not bond else None
@@ -296,10 +296,15 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
             balance+=D(row['quantity'])*sign*(-1 if row['reversal'] else 1)
         if balance:active.add(currency)
         if balance:positions.append({'key':serial,'kind':'call_deposit','group':item['group'],
-            'description':item['description']+' · Serial '+serial,'isin':None,'valor':None,'product':serial,
+            'description':item['description']+' Â· Serial '+serial,'isin':None,'valor':None,'product':serial,
             'currency':currency,'quantity':str(balance),'price':'1','price_convention':'amount','scale':'1',
             'accrued_native':'0','market_value_native':str(balance),'missing':[]})
-    reviews.append('Cash/deposit accrued interest is not estimated between bank snapshots; posted income is included in cash.')
+    from .external_deposits import native_positions
+    external=native_positions(path,requested)
+    positions.extend(external)
+    for p in external:
+        active.add(p['currency']);reviews.extend(p['review_required'])
+    reviews.append('UBS cash/deposit accrued interest is not estimated between bank snapshots; posted income is included in cash.')
     if strict_market:
         active.update(r['currency'] for r in records if baseline['as_of']<r['booking_date']<=requested and D(r['amount']))
         active.update(p['currency'] for p in baseline['positions'] if D(p['market_value_native']) or D(p['accrued_native']))
@@ -320,7 +325,7 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
             if rate is None:missing.append(security+': Bloomberg PX_LAST')
             else:
                 fx[currency+'/CZK']=str(rate)
-                reviews.append(security+': Review required — '+reason)
+                reviews.append(security+': Review required â€” '+reason)
     complete=not missing and not issues;snapshot=None
     if complete or not require_market_data:
         synthetic=[];market=ZERO;accrued_total=ZERO
@@ -388,6 +393,8 @@ def selection(store,requested=None,strict_market=True):
 
 
 def historical_accounting(path,snapshot,review_flags):
+    from .external_deposits import closing, opening
+    snapshot=closing(path,snapshot)
     accounting=accounting_view(path,snapshot)
     if not accounting:return accounting
     activity=ActivityStore(path).view(snapshot)
@@ -423,13 +430,13 @@ def historical_accounting(path,snapshot,review_flags):
             bridge.update(closing_nav_czk=accounting['nav_czk'],pnl_czk=accounting['ytd_pnl_czk'])
             review_flags=list(review_flags)+['Dated variation margin awaiting cash booking is included as a receivable/payable; it is not counted again after booking.']
     if review_flags:
-        accounting['status']='Provisional historical valuation · review required'
+        accounting['status']='Provisional historical valuation Â· review required'
         accounting['portfolio_pnl_verified']=False
         accounting['provisional']=True
         accounting['issues']=list(accounting.get('issues',[]))+list(review_flags)
     from .trade_calculations import calculate_trades
     from .cash_review import CashReviewStore
-    accounting['trade_calculations']=calculate_trades(snapshot,BaselineStore(path).latest(snapshot['as_of']),
+    accounting['trade_calculations']=calculate_trades(snapshot,opening(path,BaselineStore(path).latest(snapshot['as_of'])),
         activity,accounting,CashReviewStore(path).all(),LifecycleStore(path).all())
     return accounting
 
@@ -439,6 +446,8 @@ def view(store,requested=None,strict_market=True):
     if not snapshot:return result|{'exported_at':None,'valuation_currency':'CZK','summary':None,
         'positions':result.pop('reconstructed_positions',[]),'accounting':None,
         'valuation_basis':'Quantities and cash are reconstructed; total P/L waits for all required historical market inputs.'}
+    from .external_deposits import closing
+    snapshot=closing(store.path,snapshot)
     positions=[{k:v for k,v in row.items() if k!='raw'} for row in snapshot['positions']]
     accounting=historical_accounting(store.path,snapshot,result.get('review_flags',[]))
     return result|{'exported_at':snapshot['exported_at'],'valuation_currency':snapshot['valuation_currency'],
