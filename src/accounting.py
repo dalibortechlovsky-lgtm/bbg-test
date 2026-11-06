@@ -449,7 +449,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
     bridge['usable']=bool(usable and bridge['pnl_czk'] is not None)
     verified=bool(activity and coverage and all(a['complete'] for a in coverage) and not issues and all_rates and bridge['usable'])
     return {'as_of':cutoff,'opening_as_of':baseline['as_of'],'report_currency':'CZK',
-            'status':('Reconciled supplied records Â· owner-confirmed activity coverage' if any(c['owner_confirmed'] for c in coverage) else 'Reconciled supplied records') if verified else 'Provisional Â· coverage or reconciliation pending',
+            'status':('Reconciled supplied records · owner-confirmed activity coverage' if any(c['owner_confirmed'] for c in coverage) else 'Reconciled supplied records') if verified else 'Provisional · coverage or reconciliation pending',
             'portfolio_pnl_verified':verified,'ytd_pnl_czk':bridge['pnl_czk'] if bridge['usable'] else None,
             'ytd_asset_contribution_czk':str(all_gains) if usable and all(c['asset_contribution_czk'] is not None for c in currencies) else None,'assets':assets,'currencies':currencies,
             'realized_totals':{c:str(v) for c,v in realized_totals.items()},'realized':realized,
