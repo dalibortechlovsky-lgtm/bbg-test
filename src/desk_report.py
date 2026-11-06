@@ -13,11 +13,15 @@ def desk_csv(data):
     writer.writerow(columns)
     def emit(row):writer.writerow([spreadsheet(row.get(c)) for c in columns])
     corrected=a.get('trade_calculations')
+    for d in a.get('external_deposits',[]):
+        emit({'section':'EXTERNAL DEPOSIT','as_of':a['as_of'],'description':d['bank']+' deposit; '+d['basis'],
+              'currency':d['currency'],'quantity':d['principal'],'income_native':d['interest_native'],
+              'total_pnl_czk':d['ytd_pnl_czk'],'status':'Estimated interest; included in NAV'})
     if corrected:
         for p in corrected['positions']:
             emit({'section':'CORRECTED TRADE','as_of':a['as_of'],'description':p['description'],
                   'currency':p['currency'],'quantity':p['quantity'],'asset_pnl_native':p['pnl_native'],
-                  'total_pnl_czk':p['pnl_czk'],'status':p['status']+(' · '+p['closed_on'] if p['closed_on'] else '')})
+                  'total_pnl_czk':p['pnl_czk'],'status':p['status']+(' Â· '+p['closed_on'] if p['closed_on'] else '')})
         for key in ['open_subtotal_czk','closed_subtotal_czk','ytd_pnl_czk','reconciliation_difference_czk']:
             emit({'section':'CORRECTED TOTAL','as_of':a['as_of'],'description':key,'total_pnl_czk':corrected[key]})
         for key in ['income_czk','fees_czk','portfolio_fx_czk','other_balances_czk','pooled_margin_czk']:
@@ -96,18 +100,18 @@ body{font:12px Arial;color:#202020;margin:24px auto;padding:20px;max-width:1100p
                'Reconstructed positions and P/L date' if selection.get('selection')=='reconstructed' else 'Actual UBS snapshot and P/L date')
         parts.append('<p><strong>Requested date: '+e(selection['requested_as_of'])+'</strong><br>'+label+': '+e(a['as_of'])+'</p>')
         parts.append('<p class="notes">'+e(selection['message'])+'</p>')
-    parts.append('<p>UBS portfolio · CZK report · '+e(a['opening_as_of'])+' → '+e(a['as_of'])+'</p><p><strong>'+e(a['status'])+'</strong></p>')
+    parts.append('<p>UBS portfolio Â· CZK report Â· '+e(a['opening_as_of'])+' â†’ '+e(a['as_of'])+'</p><p><strong>'+e(a['status'])+'</strong></p>')
     if selection.get('review_flags'):
         parts.append('<p class="notes"><strong>Review required:</strong></p><ul class="notes">')
         for notice in selection['review_flags']:parts.append('<li>'+e(notice)+'</li>')
         parts.append('</ul>')
     for confirmation in a.get('activity_confirmations',[]):
         kind='no activity' if confirmation['kind']=='no_activity' else 'no further transactions beyond supplied exports'
-        parts.append('<p class="notes">Owner-confirmed coverage: '+e(confirmation['currency']+' · '+confirmation['from']+' to '+confirmation['until']+' · '+kind)+'. '+e(confirmation['reason'])+'</p>')
-    parts.append('<table class="summary"><tr><th>Net asset value CZK · incl. accrued interest</th>'+cell(a.get('nav_czk'),highlight=False)+'</tr><tr><th>YTD P/L CZK</th>'+cell(a['ytd_pnl_czk'])+'</tr></table>')
+        parts.append('<p class="notes">Owner-confirmed coverage: '+e(confirmation['currency']+' Â· '+confirmation['from']+' to '+confirmation['until']+' Â· '+kind)+'. '+e(confirmation['reason'])+'</p>')
+    parts.append('<table class="summary"><tr><th>Net asset value CZK Â· incl. accrued interest</th>'+cell(a.get('nav_czk'),highlight=False)+'</tr><tr><th>YTD P/L CZK</th>'+cell(a['ytd_pnl_czk'])+'</tr></table>')
     corrected=a.get('trade_calculations')
     if corrected:
-        parts.append('<h2>Corrected trade calculations · valuation-date FX</h2><p class="notes">'+e(corrected['basis'])+'</p><table>')
+        parts.append('<h2>Corrected trade calculations Â· valuation-date FX</h2><p class="notes">'+e(corrected['basis'])+'</p><table>')
         for label,key in [('Open trades + portfolio FX / costs','open_subtotal_czk'),('Closed trades + income / pooled margin','closed_subtotal_czk'),('Combined YTD','ytd_pnl_czk'),('Difference to NAV','reconciliation_difference_czk')]:
             parts.append('<tr><th>'+label+'</th>'+cell(corrected[key])+'</tr>')
         parts.append('</table><table><tr><th>Trade</th><th>Currency</th><th>Status / close date</th><th>Native P/L</th><th>P/L CZK</th></tr>')
@@ -119,7 +123,9 @@ body{font:12px Arial;color:#202020;margin:24px auto;padding:20px;max-width:1100p
         parts.append('</table>')
     bridge=a.get('nav_bridge')
     if bridge:
-        parts.append('<p class="notes">YTD = closing NAV − adjusted opening value − net external funding. Positive funding means deposits into the portfolio; withdrawals are negative. '+e(bridge['basis'])+'</p>')
+        if bridge.get('external_deposit_opening_czk'):
+            parts.append('<p>External deposits included in adjusted opening NAV: '+e(fmt(bridge['external_deposit_opening_czk']))+' CZK.</p>')
+        parts.append('<p class="notes">YTD = closing NAV âˆ’ adjusted opening value âˆ’ net external funding. Positive funding means deposits into the portfolio; withdrawals are negative. '+e(bridge['basis'])+'</p>')
         parts.append('<table><tr><th>Reported UBS opening NAV CZK</th><th>Transferred opening basis CZK</th><th>Adjusted opening value CZK</th><th>Closing NAV CZK</th><th>Net external funding CZK</th></tr><tr>'+cell(bridge['reported_opening_nav_czk'],highlight=False)+cell(bridge['transferred_opening_basis_czk'],highlight=False)+cell(bridge['opening_nav_czk'],highlight=False)+cell(bridge['closing_nav_czk'],highlight=False)+cell(bridge['net_external_flows_czk'],highlight=False)+'</tr></table>')
         if bridge['missing_external_fx']:
             parts.append('<p class="notes">YTD needs verified funding-date FX: '+e('; '.join(bridge['missing_external_fx']))+'.</p>')
@@ -130,21 +136,23 @@ body{font:12px Arial;color:#202020;margin:24px auto;padding:20px;max-width:1100p
         if Decimal(c['opening_native'])==0 and Decimal(c['closing_native'])==0:continue
         parts.append('<tr><td>'+e(c['currency'])+'</td>'+cell(c['native_asset_pnl'])+cell(c['asset_contribution_czk'])+cell(c['currency_contribution_czk'])+cell(c['total_pnl_czk'])+'</tr>')
     parts.append('</tbody></table>')
-    parts.append('<h2>Cash, deposits and settled derivatives</h2><table><tr><th>Currency</th><th>Grouped expiry / margin cash result</th><th>Cash / deposits and unallocated items</th><th>Outside trading profit</th><th>FX hedge cash · currency contribution</th><th>Realized total · historical average cost</th></tr>')
+    parts.append('<h2>Cash, deposits and settled derivatives</h2><table><tr><th>Currency</th><th>Grouped expiry / margin cash result</th><th>Cash / deposits and unallocated items</th><th>Outside trading profit</th><th>FX hedge cash Â· currency contribution</th><th>Realized total Â· historical average cost</th></tr>')
     for c in a['currencies']:parts.append('<tr><td>'+e(c['currency'])+'</td>'+cell(c['futures_settlements_native'])+cell(c['cash_deposit_income_costs_native'])+cell(c.get('outside_trading_profit_native','0'))+cell(c['fx_hedge_settlements_native'])+cell(a['realized_totals'].get(c['currency']))+'</tr>')
     parts.append('</table>')
     if a.get('period'):
-        p=a['period'];parts.append('<p>'+e(p['label']+' CZK · '+p['from']+' → '+p['to'])+': <strong>'+e(fmt(p['pnl_czk']))+'</strong> · '+e(p['status'])+'</p>')
+        p=a['period'];parts.append('<p>'+e(p['label']+' CZK Â· '+p['from']+' â†’ '+p['to'])+': <strong>'+e(fmt(p['pnl_czk']))+'</strong> Â· '+e(p['status'])+'</p>')
+    for d in a.get('external_deposits',[]):
+        parts.append('<h2>'+e(d['bank'])+' deposit Â· included in NAV</h2><p>Principal '+e(fmt(d['principal']))+' '+e(d['currency'])+'; estimated retained interest '+e(fmt(d['interest_native']))+' '+e(d['currency'])+'; closing value '+e(fmt(d['closing_czk']))+' CZK; opening value '+e(fmt(d['opening_czk']))+' CZK; YTD contribution '+e(fmt(d['ytd_pnl_czk']))+' CZK.</p><p class="notes">'+e(d['basis'])+'</p>')
     for title,open_only in [('Open positions',True),('Closed positions and settlement exceptions',False)]:
-        parts.append('<h2>'+title+'</h2><table><thead><tr><th>Instrument / native currency</th><th>Quantity</th><th>Size EUR</th><th>Native price return</th><th>YTD asset P/L native</th><th>Asset contribution CZK</th><th>Realized native · average cost</th></tr></thead><tbody>')
+        parts.append('<h2>'+title+'</h2><table><thead><tr><th>Instrument / native currency</th><th>Quantity</th><th>Size EUR</th><th>Native price return</th><th>YTD asset P/L native</th><th>Asset contribution CZK</th><th>Realized native Â· average cost</th></tr></thead><tbody>')
         rows=[p for p in a['assets'] if bool(Decimal(p['quantity']))==open_only]
         group=None
         for p in sorted(rows,key=lambda p:(p['group'],p['description'])):
             if p['group']!=group:group=p['group'];parts.append('<tr class="group"><td colspan="7">'+e(group)+'</td></tr>')
-            parts.append('<tr><td>'+e(p['description'])+'<br><span class="notes">'+e(p['currency']+' · '+p['quantity_status'])+'</span></td>'+cell(p['quantity'],highlight=False)+cell(p['market_value_eur'],highlight=False)+cell(p['native_price_return_percent'],True)+cell(p['ytd_asset_pnl_native'])+cell(p['asset_contribution_czk'])+cell(p['realized_native'])+'</tr>')
+            parts.append('<tr><td>'+e(p['description'])+'<br><span class="notes">'+e(p['currency']+' Â· '+p['quantity_status'])+'</span></td>'+cell(p['quantity'],highlight=False)+cell(p['market_value_eur'],highlight=False)+cell(p['native_price_return_percent'],True)+cell(p['ytd_asset_pnl_native'])+cell(p['asset_contribution_czk'])+cell(p['realized_native'])+'</tr>')
         parts.append('</tbody></table>')
     risk=data.get('snapshot_risk',{})
-    parts.append('<h2>Derivatives · expiry outcomes</h2><p class="notes">'+e(risk.get('basis',''))+'</p><table><tr><th>Option / expiry</th><th>Currency</th><th>Max premium loss</th><th>Underlying −10%</th><th>Unchanged</th><th>Underlying +10%</th></tr>')
+    parts.append('<h2>Derivatives Â· expiry outcomes</h2><p class="notes">'+e(risk.get('basis',''))+'</p><table><tr><th>Option / expiry</th><th>Currency</th><th>Max premium loss</th><th>Underlying âˆ’10%</th><th>Unchanged</th><th>Underlying +10%</th></tr>')
     for p in risk.get('rows',[]):parts.append('<tr><td>'+e(p['description'])+'<br>'+e(p['expiry'])+'</td><td>'+e(p['currency'])+'</td>'+cell('-'+p['maximum_premium_loss'])+cell(p['expiry_pnl']['-0.1'])+cell(p['expiry_pnl']['0'])+cell(p['expiry_pnl']['0.1'])+'</tr>')
     parts.append('</table><h2>Basis and reconciliation</h2><p class="notes">'+e(a['basis'])+'</p><ul class="notes">')
     for issue in a['issues']+[p['description']+': '+p['reason'] for p in risk.get('uncovered',[])]:parts.append('<li>'+e(issue)+'</li>')
