@@ -449,7 +449,7 @@ def _calculate(snapshot,baseline,activity,historical_fx,lifecycle,cash_reviews,a
     bridge['usable']=bool(usable and bridge['pnl_czk'] is not None)
     verified=bool(activity and coverage and all(a['complete'] for a in coverage) and not issues and all_rates and bridge['usable'])
     return {'as_of':cutoff,'opening_as_of':baseline['as_of'],'report_currency':'CZK',
-            'status':('Reconciled supplied records · owner-confirmed activity coverage' if any(c['owner_confirmed'] for c in coverage) else 'Reconciled supplied records') if verified else 'Provisional · coverage or reconciliation pending',
+            'status':('Reconciled supplied records Â· owner-confirmed activity coverage' if any(c['owner_confirmed'] for c in coverage) else 'Reconciled supplied records') if verified else 'Provisional Â· coverage or reconciliation pending',
             'portfolio_pnl_verified':verified,'ytd_pnl_czk':bridge['pnl_czk'] if bridge['usable'] else None,
             'ytd_asset_contribution_czk':str(all_gains) if usable and all(c['asset_contribution_czk'] is not None for c in currencies) else None,'assets':assets,'currencies':currencies,
             'realized_totals':{c:str(v) for c,v in realized_totals.items()},'realized':realized,
@@ -517,15 +517,18 @@ def period_view(previous,snapshot,activity,rates,cash_reviews=None,activity_conf
 
 
 def accounting_view(path,snapshot=None):
+    from .external_deposits import opening, closing, disclose
     from .storage import SnapshotStore
     from .history import HistoryStore
     from .lifecycle import LifecycleStore
     from .cash_review import CashReviewStore
     from .activity_confirmations import ActivityConfirmationStore
     snapshot=snapshot or SnapshotStore(path).latest()
+    snapshot=closing(path,snapshot)
+    baseline=opening(path,BaselineStore(path).latest((snapshot or {}).get('as_of')))
     activity=ActivityStore(path).view(snapshot);rates=HistoryStore(path).rates();decisions=CashReviewStore(path).all()
     confirmations=ActivityConfirmationStore(path).all()
-    result=calculate_accounting(snapshot,BaselineStore(path).latest((snapshot or {}).get('as_of')),
+    result=calculate_accounting(snapshot,baseline,
                                 activity,rates,LifecycleStore(path).all(),decisions,confirmations)
     if not result:return result
     result['fx_sources']=HistoryStore(path).sources()
@@ -535,8 +538,8 @@ def accounting_view(path,snapshot=None):
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='snapshots'").fetchone():
             row=db.execute('SELECT payload FROM snapshots WHERE as_of < ? ORDER BY as_of DESC,exported_at DESC LIMIT 1',(snapshot['as_of'],)).fetchone()
             previous=json.loads(row[0]) if row else None
-    result['period']=period_view(previous,snapshot,activity,rates,decisions,confirmations)
+    result['period']=period_view(closing(path,previous),snapshot,activity,rates,decisions,confirmations)
     wanted=defaultdict(set)
     for r in result['history_requests']+((result['period'] or {}).get('history_requests',[])):wanted[r['security']].update(r['dates'])
     result['history_requests']=[{'security':s,'dates':sorted(days)} for s,days in sorted(wanted.items())]
-    return result
+    return disclose(path,snapshot,baseline,result)
