@@ -246,14 +246,14 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
         scale=D(term['unit_scale']) if term.get('unit_scale') is not None else _scale(source,base)
         if scale is None:
             scale=_activity_scale(key,records)
-            if scale is not None:reviews.append(key+f': Review required â€” contract multiplier {scale} inferred from UBS net settlements.')
+            if scale is not None:reviews.append(key+f': Review required — contract multiplier {scale} inferred from UBS net settlements.')
         bond=scale==D('0.01');absent=[]
         price=observation['price'] if observation else None
         if observation and observation.get('currency') not in (None,currency):price=None
         if price is None:
             price,reason=(None,None) if strict_market else _price_proxy(key,requested,opening,source,records)
             if price is None:absent.append('Bloomberg PX_LAST')
-            else:reviews.append(key+': Review required â€” '+reason)
+            else:reviews.append(key+': Review required — '+reason)
         if not security:
             reviews.append(key+': Bloomberg identifier mapping missing.')
         if scale is None:absent.append('verified contract multiplier')
@@ -261,9 +261,9 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
         if bond and accrued is None:
             accrued,reason=_accrued_proxy(key,requested,opening,source,quantity)
             if accrued is None:absent.append('Bloomberg accrued interest')
-            elif reason:reviews.append(key+': Review required â€” '+reason)
+            elif reason:reviews.append(key+': Review required — '+reason)
         if term.get('review_required'):
-            reviews.append(key+': Review required â€” '+term['basis'])
+            reviews.append(key+': Review required — '+term['basis'])
         if absent:missing.append(key+': '+', '.join(absent))
         native=quantity*price*scale if price is not None and scale is not None else None
         accrued_native=quantity*accrued*D('0.01') if bond and accrued is not None else ZERO if not bond else None
@@ -296,7 +296,7 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
             balance+=D(row['quantity'])*sign*(-1 if row['reversal'] else 1)
         if balance:active.add(currency)
         if balance:positions.append({'key':serial,'kind':'call_deposit','group':item['group'],
-            'description':item['description']+' Â· Serial '+serial,'isin':None,'valor':None,'product':serial,
+            'description':item['description']+' · Serial '+serial,'isin':None,'valor':None,'product':serial,
             'currency':currency,'quantity':str(balance),'price':'1','price_convention':'amount','scale':'1',
             'accrued_native':'0','market_value_native':str(balance),'missing':[]})
     from .external_deposits import native_positions
@@ -325,7 +325,7 @@ def reconstruct(path,requested,require_market_data=True,strict_market=False,live
             if rate is None:missing.append(security+': Bloomberg PX_LAST')
             else:
                 fx[currency+'/CZK']=str(rate)
-                reviews.append(security+': Review required â€” '+reason)
+                reviews.append(security+': Review required — '+reason)
     complete=not missing and not issues;snapshot=None
     if complete or not require_market_data:
         synthetic=[];market=ZERO;accrued_total=ZERO
@@ -430,7 +430,7 @@ def historical_accounting(path,snapshot,review_flags):
             bridge.update(closing_nav_czk=accounting['nav_czk'],pnl_czk=accounting['ytd_pnl_czk'])
             review_flags=list(review_flags)+['Dated variation margin awaiting cash booking is included as a receivable/payable; it is not counted again after booking.']
     if review_flags:
-        accounting['status']='Provisional historical valuation Â· review required'
+        accounting['status']='Provisional historical valuation · review required'
         accounting['portfolio_pnl_verified']=False
         accounting['provisional']=True
         accounting['issues']=list(accounting.get('issues',[]))+list(review_flags)
