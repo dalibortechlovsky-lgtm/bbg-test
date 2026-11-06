@@ -167,7 +167,10 @@ class Handler(BaseHTTPRequestHandler):
             accounting=accounting_view(self.store.path,snapshot) if self.store else None
             live=live_performance(self.store.path,bloomberg) if self.store and baseline else None
             external=ExternalPositionStore(self.store.path).view(snapshot,bloomberg) if self.store else None
-            ubs_aum=(accounting or {}).get('nav_czk');other_aum=(external or {}).get('aum_czk')
+            ubs_aum=(accounting or {}).get('nav_czk')
+            if ubs_aum is not None:
+                ubs_aum=str(Decimal(ubs_aum)-sum((Decimal(r['closing_czk']) for r in (accounting or {}).get('external_deposits',[])),Decimal(0)))
+            other_aum=(external or {}).get('aum_czk')
             consolidated=str(Decimal(ubs_aum)+Decimal(other_aum)) if ubs_aum is not None and other_aum is not None else None
             valuation_dates=sorted(({snapshot['as_of']} if snapshot else set())|
                                    {s['as_of'] for s in (external or {}).get('snapshots',[])})
